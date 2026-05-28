@@ -9,8 +9,10 @@ import { feature } from "topojson-client";
 const Globe = dynamic(() => import("react-globe.gl"), { ssr: false });
 
 interface GlobeViewProps {
-  quakes: QuakeEvent[];
+  live: QuakeEvent[];
+  archived: QuakeEvent[];
   focusedQuake: QuakeEvent | null;
+  replayingId: string | null;
   autoTrack: boolean;
   stations: Station[];
 }
@@ -21,7 +23,14 @@ function getColor(mag: number) {
   return "rgba(255, 0, 0, 0.6)";
 }
 
-export default function GlobeView({ quakes, focusedQuake, autoTrack, stations }: GlobeViewProps) {
+export default function GlobeView({
+  live,
+  archived,
+  focusedQuake,
+  replayingId,
+  autoTrack,
+  stations,
+}: GlobeViewProps) {
   const globeRef = useRef<any>(null);
   const [countries, setCountries] = useState<any[]>([]);
 
@@ -45,7 +54,16 @@ export default function GlobeView({ quakes, focusedQuake, autoTrack, stations }:
     }
   }, [autoTrack, focusedQuake]);
 
-  const ringsData = quakes.map((q) => ({
+  // Rings only for LIVE quakes + the one being replayed
+  const ringSources = [...live];
+  if (replayingId) {
+    const replayed = archived.find((q) => q.id === replayingId);
+    if (replayed && !ringSources.find((q) => q.id === replayed.id)) {
+      ringSources.push(replayed);
+    }
+  }
+
+  const ringsData = ringSources.map((q) => ({
     lat: q.lat,
     lng: q.lon,
     maxR: Math.max(0.5, q.mag * 2),
@@ -54,7 +72,9 @@ export default function GlobeView({ quakes, focusedQuake, autoTrack, stations }:
     color: getColor(q.mag),
   }));
 
-  const pointsData = quakes.map((q) => ({
+  // Points for ALL quakes (live + archived)
+  const allQuakes = [...live, ...archived];
+  const pointsData = allQuakes.map((q) => ({
     lat: q.lat,
     lng: q.lon,
     size: Math.max(0.2, q.mag * 0.4),
@@ -89,8 +109,9 @@ export default function GlobeView({ quakes, focusedQuake, autoTrack, stations }:
         ringMaxRadius="maxR"
         ringPropagationSpeed="propagationSpeed"
         ringRepeatPeriod="repeatPeriod"
+        ringAltitude={0.03}
         pointsData={[...pointsData, ...stationPoints]}
-        pointAltitude={0.01}
+        pointAltitude={0.03}
         pointRadius="size"
         pointColor={(d: any) => d.color}
         labelsData={stationPoints}
@@ -99,7 +120,7 @@ export default function GlobeView({ quakes, focusedQuake, autoTrack, stations }:
         labelText={(d: any) => d.name}
         labelSize={0.15}
         labelColor={() => "rgba(200, 220, 255, 0.6)"}
-        labelAltitude={0.02}
+        labelAltitude={0.04}
         labelDotRadius={0.1}
         labelDotOrientation={() => "top"}
       />

@@ -17,13 +17,16 @@ export default function QuakeMap() {
   } = useLocalQuakes();
   const { stations } = useStations();
   const [autoTrack, setAutoTrack] = useState(true);
+  const [replayingId, setReplayingId] = useState<string | null>(null);
 
   return (
     <div className="relative h-screen w-screen bg-black overflow-hidden">
       <div className="absolute inset-0 z-0 globe-wrapper">
         <GlobeView
-          quakes={[...live, ...archived]}
+          live={live}
+          archived={archived}
           focusedQuake={focusedLiveQuake}
+          replayingId={replayingId}
           autoTrack={autoTrack}
           stations={stations}
         />
@@ -56,6 +59,9 @@ export default function QuakeMap() {
           connected={connected}
           autoTrack={autoTrack}
           onAutoTrackChange={setAutoTrack}
+          onReplayArchived={setReplayingId}
+          replayingId={replayingId}
+          onStopReplay={() => setReplayingId(null)}
         />
       </div>
     </div>
