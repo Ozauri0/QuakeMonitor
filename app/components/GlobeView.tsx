@@ -15,6 +15,8 @@ interface GlobeViewProps {
   replayingId: string | null;
   autoTrack: boolean;
   stations: Station[];
+  showStations: boolean;
+  showArchived: boolean;
 }
 
 function getColor(mag: number) {
@@ -30,6 +32,8 @@ export default function GlobeView({
   replayingId,
   autoTrack,
   stations,
+  showStations,
+  showArchived,
 }: GlobeViewProps) {
   const globeRef = useRef<any>(null);
   const [countries, setCountries] = useState<any[]>([]);
@@ -72,22 +76,28 @@ export default function GlobeView({
     color: getColor(q.mag),
   }));
 
-  // Points for ALL quakes (live + archived)
-  const allQuakes = [...live, ...archived];
-  const pointsData = allQuakes.map((q) => ({
+  // Points for quakes
+  const visibleQuakes = showArchived ? [...live, ...archived] : [...live];
+  const pointsData = visibleQuakes.map((q) => ({
     lat: q.lat,
     lng: q.lon,
     size: Math.max(0.2, q.mag * 0.4),
     color: getColor(q.mag),
   }));
 
-  const stationPoints = stations.map((s) => ({
-    lat: s.lat,
-    lng: s.lon,
-    size: 0.15,
-    color: s.active ? "rgba(0, 200, 255, 0.7)" : "rgba(100, 100, 100, 0.4)",
-    name: s.name,
-  }));
+  const stationPoints = showStations
+    ? stations.map((s) => ({
+        lat: s.lat,
+        lng: s.lon,
+        size: 0.15,
+        color: s.active ? "rgba(0, 200, 255, 0.7)" : "rgba(100, 100, 100, 0.4)",
+        name: s.name,
+      }))
+    : [];
+
+  const labelData = showStations
+    ? stationPoints
+    : [];
 
   return (
     <div className="relative w-full h-full">
@@ -114,7 +124,7 @@ export default function GlobeView({
         pointAltitude={0.03}
         pointRadius="size"
         pointColor={(d: any) => d.color}
-        labelsData={stationPoints}
+        labelsData={labelData}
         labelLat={(d: any) => d.lat}
         labelLng={(d: any) => d.lng}
         labelText={(d: any) => d.name}

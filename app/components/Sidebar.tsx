@@ -2,7 +2,20 @@
 
 import { QuakeEvent } from "@/app/types/quake";
 import { format } from "date-fns";
-import { Wifi, WifiOff, Radio, Zap, PanelRightClose, PanelRightOpen, Play, Square } from "lucide-react";
+import {
+  Wifi,
+  WifiOff,
+  Radio,
+  Zap,
+  PanelRightClose,
+  PanelRightOpen,
+  Play,
+  Square,
+  Eye,
+  EyeOff,
+  RadioTower,
+  Archive,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 
 interface SidebarProps {
@@ -13,6 +26,10 @@ interface SidebarProps {
   onReplayArchived: (id: string) => void;
   replayingId: string | null;
   onStopReplay: () => void;
+  showStations: boolean;
+  onToggleStations: () => void;
+  showArchived: boolean;
+  onToggleArchived: () => void;
 }
 
 function getMagColorClass(mag: number) {
@@ -29,6 +46,10 @@ export default function Sidebar({
   onReplayArchived,
   replayingId,
   onStopReplay,
+  showStations,
+  onToggleStations,
+  showArchived,
+  onToggleArchived,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [simulating, setSimulating] = useState(false);
@@ -76,7 +97,11 @@ export default function Sidebar({
         className="absolute top-4 right-4 z-[60] p-2 rounded-lg bg-gray-800/90 border border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
         title={isOpen ? "Ocultar panel" : "Mostrar panel"}
       >
-        {isOpen ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
+        {isOpen ? (
+          <PanelRightClose className="w-5 h-5" />
+        ) : (
+          <PanelRightOpen className="w-5 h-5" />
+        )}
       </button>
 
       {isOpen && (
@@ -90,7 +115,9 @@ export default function Sidebar({
               {connected ? (
                 <>
                   <Wifi className="w-4 h-4 text-green-400" />
-                  <span className="text-green-400">Conectado al servidor local</span>
+                  <span className="text-green-400">
+                    Conectado al servidor local
+                  </span>
                 </>
               ) : (
                 <>
@@ -123,6 +150,39 @@ export default function Sidebar({
               <Zap className="w-3 h-3" />
               {simulating ? "Enviando..." : "Simular Sismo de Prueba"}
             </button>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={onToggleStations}
+                className={`flex-1 px-2 py-1.5 rounded text-[10px] font-semibold transition-colors flex items-center justify-center gap-1 ${
+                  showStations
+                    ? "bg-cyan-900/60 text-cyan-300 border border-cyan-800"
+                    : "bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700"
+                }`}
+              >
+                {showStations ? (
+                  <Eye className="w-3 h-3" />
+                ) : (
+                  <EyeOff className="w-3 h-3" />
+                )}
+                Estaciones
+              </button>
+              <button
+                onClick={onToggleArchived}
+                className={`flex-1 px-2 py-1.5 rounded text-[10px] font-semibold transition-colors flex items-center justify-center gap-1 ${
+                  showArchived
+                    ? "bg-amber-900/60 text-amber-300 border border-amber-800"
+                    : "bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700"
+                }`}
+              >
+                {showArchived ? (
+                  <Eye className="w-3 h-3" />
+                ) : (
+                  <EyeOff className="w-3 h-3" />
+                )}
+                Archivados
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -144,7 +204,11 @@ export default function Sidebar({
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className={`text-lg font-bold ${getMagColorClass(quake.mag)}`}>
+                    <span
+                      className={`text-lg font-bold ${getMagColorClass(
+                        quake.mag
+                      )}`}
+                    >
                       M {quake.mag.toFixed(1)}
                     </span>
                     <div className="flex items-center gap-2">

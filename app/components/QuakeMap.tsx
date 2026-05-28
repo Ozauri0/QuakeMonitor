@@ -18,6 +18,8 @@ export default function QuakeMap() {
   const { stations } = useStations();
   const [autoTrack, setAutoTrack] = useState(true);
   const [replayingId, setReplayingId] = useState<string | null>(null);
+  const [showStations, setShowStations] = useState(true);
+  const [showArchived, setShowArchived] = useState(true);
 
   return (
     <div className="relative h-screen w-screen bg-black overflow-hidden">
@@ -29,6 +31,8 @@ export default function QuakeMap() {
           replayingId={replayingId}
           autoTrack={autoTrack}
           stations={stations}
+          showStations={showStations}
+          showArchived={showArchived}
         />
       </div>
 
@@ -62,6 +66,10 @@ export default function QuakeMap() {
           onReplayArchived={setReplayingId}
           replayingId={replayingId}
           onStopReplay={() => setReplayingId(null)}
+          showStations={showStations}
+          onToggleStations={() => setShowStations((v) => !v)}
+          showArchived={showArchived}
+          onToggleArchived={() => setShowArchived((v) => !v)}
         />
       </div>
     </div>
