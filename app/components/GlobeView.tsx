@@ -1,11 +1,10 @@
 "use client";
 
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { QuakeEvent } from "@/app/types/quake";
 import { Station } from "@/app/types/station";
 import { feature } from "topojson-client";
-import { useSettings } from "@/app/context/SettingsContext";
 
 const Globe = dynamic(() => import("react-globe.gl"), { ssr: false });
 
@@ -20,18 +19,11 @@ interface GlobeViewProps {
   showArchived: boolean;
 }
 
-/* stable accessor functions — same reference across renders */
-const accLat = (d: any) => d.lat;
-const accLng = (d: any) => d.lng;
-const accMaxR = (d: any) => d.maxR;
-const accPropagation = (d: any) => d.propagationSpeed;
-const accRepeat = (d: any) => d.repeatPeriod;
-const accSize = (d: any) => d.size;
-const accColor = (d: any) => d.color;
-const accName = (d: any) => d.name;
-const accGeoJson = (d: any) => d.geometry;
-const constLabelDotOrientation = (): "top" => "top";
-const constPolygonLabel = () => "";
+function getColor(mag: number) {
+  if (mag < 3) return "rgba(0, 255, 0, 0.6)";
+  if (mag < 5) return "rgba(255, 255, 0, 0.6)";
+  return "rgba(255, 0, 0, 0.6)";
+}
 
 export default function GlobeView({
   live,
@@ -43,7 +35,6 @@ export default function GlobeView({
   showStations,
   showArchived,
 }: GlobeViewProps) {
-  const { settings } = useSettings();
   const globeRef = useRef<any>(null);
   const [countries, setCountries] = useState<any[]>([]);
 
@@ -67,63 +58,46 @@ export default function GlobeView({
     }
   }, [autoTrack, focusedQuake]);
 
-  const getColor = (mag: number) => {
-    if (mag < 3) return settings.quakePointColorLow;
-    if (mag < 5) return settings.quakePointColorMid;
-    return settings.quakePointColorHigh;
-  };
-
-  /* ── memoized quake datasets ── */
-  const ringsData = useMemo(() => {
-    const ringSources = [...live];
-    if (replayingId) {
-      const replayed = archived.find((q) => q.id === replayingId);
-      if (replayed && !ringSources.find((q) => q.id === replayed.id)) {
-        ringSources.push(replayed);
-      }
+  // Rings only for LIVE quakes + the one being replayed
+  const ringSources = [...live];
+  if (replayingId) {
+    const replayed = archived.find((q) => q.id === replayingId);
+    if (replayed && !ringSources.find((q) => q.id === replayed.id)) {
+      ringSources.push(replayed);
     }
-    return ringSources.map((q) => ({
-      lat: q.lat,
-      lng: q.lon,
-      maxR: Math.max(0.5, q.mag * 2),
-      propagationSpeed: settings.ringPropagationSpeed,
-      repeatPeriod: settings.ringRepeatPeriod,
-      color: getColor(q.mag),
-    }));
-  }, [live, archived, replayingId, settings]);
+  }
 
-  const pointsData = useMemo(() => {
-    const visibleQuakes = showArchived ? [...live, ...archived] : [...live];
-    return visibleQuakes.map((q) => ({
-      lat: q.lat,
-      lng: q.lon,
-      size: Math.max(0.2, q.mag * settings.quakePointSizeBase),
-      color: getColor(q.mag),
-    }));
-  }, [live, archived, showArchived, settings]);
+  const ringsData = ringSources.map((q) => ({
+    lat: q.lat,
+    lng: q.lon,
+    maxR: Math.max(0.5, q.mag * 2),
+    propagationSpeed: 2,
+    repeatPeriod: 1000,
+    color: getColor(q.mag),
+  }));
 
-  /* ── memoized station datasets ── */
-  const stationPoints = useMemo(() => {
-    if (!showStations) return [];
-    return stations.map((s) => ({
-      lat: s.lat,
-      lng: s.lon,
-      size: settings.stationPointSize,
-      color: s.active ? settings.stationColorActive : settings.stationColorInactive,
-      name: s.name,
-    }));
-  }, [stations, showStations, settings]);
+  // Points for quakes
+  const visibleQuakes = showArchived ? [...live, ...archived] : [...live];
+  const pointsData = visibleQuakes.map((q) => ({
+    lat: q.lat,
+    lng: q.lon,
+    size: Math.max(0.2, q.mag * 0.4),
+    color: getColor(q.mag),
+  }));
 
-  const allPoints = useMemo(
-    () => [...pointsData, ...stationPoints],
-    [pointsData, stationPoints]
-  );
+  const stationPoints = showStations
+    ? stations.map((s) => ({
+        lat: s.lat,
+        lng: s.lon,
+        size: 0.15,
+        color: s.active ? "rgba(0, 200, 255, 0.7)" : "rgba(100, 100, 100, 0.4)",
+        name: s.name,
+      }))
+    : [];
 
-  /* ── stable color accessors from settings ── */
-  const polygonSideColor = useMemo(() => () => settings.polygonSideColor, [settings.polygonSideColor]);
-  const polygonCapColor = useMemo(() => () => settings.polygonCapColor, [settings.polygonCapColor]);
-  const polygonStrokeColor = useMemo(() => () => settings.polygonStrokeColor, [settings.polygonStrokeColor]);
-  const labelColor = useMemo(() => () => settings.stationColorActive, [settings.stationColorActive]);
+  const labelData = showStations
+    ? stationPoints
+    : [];
 
   return (
     <div className="relative w-full h-full">
@@ -131,34 +105,34 @@ export default function GlobeView({
         ref={globeRef}
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
         bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-        backgroundColor={settings.globeBackgroundColor}
-        atmosphereColor={settings.atmosphereColor}
-        atmosphereAltitude={settings.atmosphereAltitude}
+        backgroundColor="rgba(0,0,0,0)"
+        atmosphereColor="rgba(60, 120, 200, 0.5)"
+        atmosphereAltitude={0.15}
         polygonsData={countries}
-        polygonGeoJsonGeometry={accGeoJson}
-        polygonSideColor={polygonSideColor}
-        polygonCapColor={polygonCapColor}
-        polygonStrokeColor={polygonStrokeColor}
-        polygonLabel={constPolygonLabel}
+        polygonGeoJsonGeometry={(d: any) => d.geometry}
+        polygonSideColor={() => "rgba(100, 100, 100, 0.15)"}
+        polygonCapColor={() => "rgba(50, 50, 50, 0.05)"}
+        polygonStrokeColor={() => "rgba(120, 120, 120, 0.4)"}
+        polygonLabel={() => ""}
         ringsData={ringsData}
-        ringColor={accColor}
-        ringMaxRadius={accMaxR}
-        ringPropagationSpeed={accPropagation}
-        ringRepeatPeriod={accRepeat}
-        ringAltitude={settings.ringAltitude}
-        pointsData={allPoints}
-        pointAltitude={settings.pointAltitude}
-        pointRadius={accSize}
-        pointColor={accColor}
-        labelsData={stationPoints}
-        labelLat={accLat}
-        labelLng={accLng}
-        labelText={accName}
+        ringColor={(d: any) => d.color}
+        ringMaxRadius="maxR"
+        ringPropagationSpeed="propagationSpeed"
+        ringRepeatPeriod="repeatPeriod"
+        ringAltitude={0.03}
+        pointsData={[...pointsData, ...stationPoints]}
+        pointAltitude={0.03}
+        pointRadius="size"
+        pointColor={(d: any) => d.color}
+        labelsData={labelData}
+        labelLat={(d: any) => d.lat}
+        labelLng={(d: any) => d.lng}
+        labelText={(d: any) => d.name}
         labelSize={0.15}
-        labelColor={labelColor}
-        labelAltitude={settings.labelAltitude}
+        labelColor={() => "rgba(200, 220, 255, 0.6)"}
+        labelAltitude={0.04}
         labelDotRadius={0.1}
-        labelDotOrientation={constLabelDotOrientation}
+        labelDotOrientation={() => "top"}
       />
     </div>
   );

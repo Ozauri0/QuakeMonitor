@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import GlobeView from "./GlobeView";
 import Sidebar from "./Sidebar";
 import { LiveMainCard, LiveSecondaryCard } from "./LiveDashboard";
@@ -20,10 +20,6 @@ export default function QuakeMap() {
   const [replayingId, setReplayingId] = useState<string | null>(null);
   const [showStations, setShowStations] = useState(true);
   const [showArchived, setShowArchived] = useState(true);
-
-  const toggleStations = useCallback(() => setShowStations((v) => !v), []);
-  const toggleArchived = useCallback(() => setShowArchived((v) => !v), []);
-  const stopReplay = useCallback(() => setReplayingId(null), []);
 
   return (
     <div className="relative h-screen w-screen bg-black overflow-hidden">
@@ -69,11 +65,11 @@ export default function QuakeMap() {
           onAutoTrackChange={setAutoTrack}
           onReplayArchived={setReplayingId}
           replayingId={replayingId}
-          onStopReplay={stopReplay}
+          onStopReplay={() => setReplayingId(null)}
           showStations={showStations}
-          onToggleStations={toggleStations}
+          onToggleStations={() => setShowStations((v) => !v)}
           showArchived={showArchived}
-          onToggleArchived={toggleArchived}
+          onToggleArchived={() => setShowArchived((v) => !v)}
         />
       </div>
     </div>
