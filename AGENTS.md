@@ -25,13 +25,16 @@ app/
   api/
     webhook/quake/route.ts      # POST receiver from GlobalQuake (saves to global.latestQuake)
     webhook/station/route.ts    # POST receiver for station data
+    simulate/route.ts           # POST endpoint for test earthquakes with custom params
     stream/quakes/route.ts      # SSE endpoint for quake events
     stream/stations/route.ts    # SSE endpoint for station data
   components/
     GlobeView.tsx               # 3D globe (rings, points, stations, country borders)
     LiveDashboard.tsx           # Live quake cards (main + secondary)
     QuakeMap.tsx                # Main layout (globe + overlays)
-    Sidebar.tsx                 # Right panel (archived quakes, controls, simulate)
+    Sidebar.tsx                 # Right panel (archived quakes, controls, simulate, visual settings)
+  context/
+    SettingsContext.tsx         # React Context for live visual customization of the globe
   hooks/
     useLocalQuakes.ts           # SSE quake state with live/archived split, 90s timer, 10s rotation
     useStations.ts              # SSE station state with Map-based diffing
@@ -85,6 +88,34 @@ bun run dev          # Start Next.js dev server
 bun run build        # Production build
 mvn package -DskipTests -q   # Build GlobalQuake Java (from globalquake-src/)
 ```
+
+## Visual Customization
+The dashboard exposes a collapsible **Visual Settings** panel in the right sidebar. All changes are reactive and update the 3D globe in real-time.
+
+Configurable properties (via `SettingsContext`):
+- **Quake point colors** — low (<3), mid (3-5), high (>=5) magnitude colors
+- **Station colors** — active vs inactive station dot colors
+- **Ring altitude** — height of animated rings above the surface
+- **Point altitude** — height of quake/station dots
+- **Ring propagation speed** — how fast the shockwave ring expands
+- **Ring repeat period** — ms between ring animation loops
+- **Point size base** — multiplier for quake dot sizes
+- **Station point size** — size of station dots
+
+## Simulation Endpoint
+`POST /api/simulate` allows injecting test earthquakes with full control:
+```json
+{
+  "lat": -33.44,
+  "lon": -70.65,
+  "depth": 15.0,
+  "mag": 5.2,
+  "locationName": "Santiago, Chile",
+  "time": 1716844800000,
+  "isUpdate": false
+}
+```
+All fields are optional — omitted values fall back to random defaults.
 
 ## Known Issues / Gotchas
 - `react-globe.gl` colors MUST be rgba strings, not arrays.
