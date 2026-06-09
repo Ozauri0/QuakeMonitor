@@ -56,6 +56,7 @@ function GlobeView({
   const { settings } = useSettings();
   const globeRef = useRef<any>(null);
   const [countries, setCountries] = useState<any[]>([]);
+  const globeReadyRef = useRef(false);
 
   // Stable object pools keyed by ID — only create new objects for new items
   const ringPool = useRef<Map<string, any>>(new Map());
@@ -100,6 +101,27 @@ function GlobeView({
     } catch {
       // renderer may not be available
     }
+
+    // Start view: Europe/Africa, then animate to Chile
+    globe.pointOfView({ lat: 25, lng: 10, altitude: 2.8 }, 0);
+    setTimeout(() => {
+      globe.pointOfView({ lat: -35, lng: -70, altitude: 0.8 }, 3000);
+    }, 400);
+
+    globeReadyRef.current = true;
+  }, []);
+
+  // Camera altitude tracking for distance-based fade-out (updated cheaply via rAF)
+  const camAltRef = useRef(2.5);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const pov = globeRef.current?.pointOfView?.();
+      if (pov) camAltRef.current = pov.altitude;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   // ── Build ringsData with stable object references ──
@@ -310,22 +332,28 @@ function GlobeView({
   }, []);
 
   const htmlElementVisibilityModifier = useCallback((el: HTMLElement, isVisible: boolean) => {
-    let visible = isVisible;
-    const pov = globeRef.current?.pointOfView?.();
-    if (!pov) {
-      el.style.opacity = visible ? "1" : "0";
+    // Prevent HTML labels from appearing at the canvas centre before the globe is ready
+    if (!globeReadyRef.current) {
+      el.style.opacity = "0";
       return;
     }
 
-    // City/capital labels only visible when zoomed in (camera altitude < 1.2)
-    if (visible && el.dataset.type === "city") {
-      if (pov.altitude > 1.2) visible = false;
+    const alt = camAltRef.current;
+    let opacity = isVisible ? 1 : 0;
+
+    // Distance-based fade-out (zoom-out culling)
+    if (el.dataset.type === "station") {
+      if (alt > 1.5) opacity = 0;
+      else if (alt > 1.2) opacity = 1 - (alt - 1.2) / 0.3;
+    } else if (el.dataset.type === "city") {
+      if (alt > 2.0) opacity = 0;
+      else if (alt > 1.6) opacity = 1 - (alt - 1.6) / 0.4;
+    } else if (el.dataset.type === "region") {
+      if (alt > 2.5) opacity = 0;
+      else if (alt > 2.0) opacity = 1 - (alt - 2.0) / 0.5;
     }
 
-    // Region labels always visible (no altitude restriction)
-    // (intentionally no restriction for "region")
-
-    el.style.opacity = visible ? "1" : "0";
+    el.style.opacity = String(opacity);
   }, []);
 
   return (
