@@ -38,7 +38,7 @@ export default function QuakeMap() {
 
       {/* Live Main Card - Top Left */}
       {focusedLiveQuake && (
-        <div className="absolute top-4 left-4 z-50 w-80">
+        <div className="absolute top-3 left-3 md:top-4 md:left-4 z-50 w-full max-w-[18rem] md:w-80">
           <LiveMainCard quake={focusedLiveQuake} />
         </div>
       )}
@@ -46,8 +46,8 @@ export default function QuakeMap() {
       {/* Secondary Live Cards - Left Center */}
       {secondaryLiveQuakes.length > 0 && (
         <div
-          className={`absolute left-4 z-50 flex flex-col gap-2 max-h-[calc(100vh-260px)] overflow-y-auto pb-4 ${
-            focusedLiveQuake ? "top-60" : "top-4"
+          className={`absolute left-3 md:left-4 z-50 flex flex-col gap-2 max-h-[calc(100vh-240px)] md:max-h-[calc(100vh-260px)] overflow-y-auto pb-4 w-full max-w-[16rem] md:w-auto ${
+            focusedLiveQuake ? "top-52 md:top-60" : "top-3 md:top-4"
           }`}
         >
           {secondaryLiveQuakes.map((q) => (
@@ -57,7 +57,7 @@ export default function QuakeMap() {
       )}
 
       {/* Archived Sidebar - Right */}
-      <div className="absolute right-0 top-0 bottom-0 w-96 z-50">
+      <div className="absolute right-0 top-0 bottom-0 z-50 w-full max-w-[20rem] md:w-96 pointer-events-none">
         <Sidebar
           archived={archived}
           connected={connected}

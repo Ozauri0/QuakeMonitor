@@ -6,6 +6,8 @@ export interface GlobeSettings {
   quakePointColorLow: string;
   quakePointColorMid: string;
   quakePointColorHigh: string;
+  quakeMagLowMax: number;
+  quakeMagMidMax: number;
   stationColorActive: string;
   stationColorInactive: string;
   ringAltitude: number;
@@ -27,11 +29,13 @@ const defaultSettings: GlobeSettings = {
   quakePointColorLow: "rgba(0, 255, 0, 0.6)",
   quakePointColorMid: "rgba(255, 255, 0, 0.6)",
   quakePointColorHigh: "rgba(255, 0, 0, 0.6)",
+  quakeMagLowMax: 3,
+  quakeMagMidMax: 5,
   stationColorActive: "rgba(0, 200, 255, 0.7)",
   stationColorInactive: "rgba(100, 100, 100, 0.4)",
   ringAltitude: 0.03,
   pointAltitude: 0.03,
-  labelAltitude: 0.04,
+  labelAltitude: 0.008,
   ringPropagationSpeed: 2,
   ringRepeatPeriod: 1000,
   stationPointSize: 0.15,

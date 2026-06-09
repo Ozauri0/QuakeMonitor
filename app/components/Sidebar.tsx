@@ -6,17 +6,17 @@ import {
   Wifi,
   WifiOff,
   Radio,
-  Zap,
   PanelRightClose,
   PanelRightOpen,
   Play,
   Square,
   Eye,
   EyeOff,
-  RadioTower,
-  Archive,
+  Settings,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
+import Link from "next/link";
+import { useSettings } from "@/app/context/SettingsContext";
 
 interface SidebarProps {
   archived: QuakeEvent[];
@@ -30,12 +30,6 @@ interface SidebarProps {
   onToggleStations: () => void;
   showArchived: boolean;
   onToggleArchived: () => void;
-}
-
-function getMagColorClass(mag: number) {
-  if (mag >= 5) return "text-red-400";
-  if (mag >= 3) return "text-yellow-400";
-  return "text-green-400";
 }
 
 export default function Sidebar({
@@ -52,49 +46,20 @@ export default function Sidebar({
   onToggleArchived,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
-  const [simulating, setSimulating] = useState(false);
+  const { settings } = useSettings();
 
-  const handleSimulate = useCallback(async () => {
-    setSimulating(true);
-    const id = `sim-${Date.now()}`;
-    const lat = parseFloat((Math.random() * 140 - 60).toFixed(4));
-    const lon = parseFloat((Math.random() * 360 - 180).toFixed(4));
-    const depth = parseFloat((Math.random() * 700).toFixed(1));
-    const mag = parseFloat((Math.random() * 6.5 + 2.0).toFixed(1));
-
-    const payload: QuakeEvent = {
-      id,
-      lat,
-      lon,
-      depth,
-      mag,
-      locationName: `Simulación de Prueba #${archived.length + 1}`,
-      time: Date.now(),
-      isUpdate: false,
-    };
-
-    try {
-      const res = await fetch("/api/webhook/quake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        console.error("Simulación falló:", await res.text());
-      }
-    } catch (e) {
-      console.error("Error enviando simulación:", e);
-    } finally {
-      setSimulating(false);
-    }
-  }, [archived.length]);
+  function getMagColorClass(mag: number) {
+    if (mag >= settings.quakeMagMidMax) return "text-red-400";
+    if (mag >= settings.quakeMagLowMax) return "text-yellow-400";
+    return "text-green-400";
+  }
 
   return (
     <>
       {/* Toggle button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="absolute top-4 right-4 z-[60] p-2 rounded-lg bg-gray-800/90 border border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+        className="absolute top-4 right-4 z-[60] p-2 rounded-lg bg-gray-800/90 border border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors pointer-events-auto"
         title={isOpen ? "Ocultar panel" : "Mostrar panel"}
       >
         {isOpen ? (
@@ -105,7 +70,7 @@ export default function Sidebar({
       </button>
 
       {isOpen && (
-        <aside className="relative w-full h-full bg-gray-900/80 backdrop-blur-md border-l border-gray-800 flex flex-col text-gray-100">
+        <aside className="relative w-full h-full bg-gray-900/80 backdrop-blur-md border-l border-gray-800 flex flex-col text-gray-100 pointer-events-auto">
           <div className="p-4 border-b border-gray-800">
             <h1 className="text-xl font-bold flex items-center gap-2">
               <Radio className="w-6 h-6 text-red-500" />
@@ -142,15 +107,6 @@ export default function Sidebar({
             >
               {autoTrack ? "Auto-Seguimiento: ON" : "Auto-Seguimiento: OFF"}
             </button>
-            <button
-              onClick={handleSimulate}
-              disabled={simulating}
-              className="w-full px-3 py-2 rounded text-xs font-semibold transition-colors flex items-center justify-center gap-2 bg-purple-600 text-white hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Zap className="w-3 h-3" />
-              {simulating ? "Enviando..." : "Simular Sismo de Prueba"}
-            </button>
-
             <div className="flex gap-2 pt-1">
               <button
                 onClick={onToggleStations}
@@ -183,6 +139,13 @@ export default function Sidebar({
                 Archivados
               </button>
             </div>
+            <Link
+              href="/admin"
+              className="w-full px-3 py-2 rounded text-xs font-semibold transition-colors flex items-center justify-center gap-2 bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 mt-2"
+            >
+              <Settings className="w-3 h-3" />
+              Panel de Administración
+            </Link>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">

@@ -46,7 +46,7 @@ interface LiveSecondaryCardProps {
 
 export function LiveSecondaryCard({ quake }: LiveSecondaryCardProps) {
   return (
-    <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700/60 rounded-lg p-2 w-64">
+    <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700/60 rounded-lg p-2 w-full md:w-64">
       <div className="flex items-center gap-2 mb-1">
         <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
         <span className="text-red-400 text-[10px] font-bold uppercase tracking-wider">
