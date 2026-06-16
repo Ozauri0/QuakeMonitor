@@ -29,7 +29,6 @@ export function useStations() {
         }
       }
 
-      // Remove stations no longer present (optional, keeps list clean)
       if (incoming.length < prev.length) {
         const incomingIds = new Set(incoming.map((s) => s.id));
         for (const id of prevMap.keys()) {

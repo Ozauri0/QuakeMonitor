@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 
 export interface GlobeSettings {
   quakePointColorLow: string;
@@ -25,7 +25,9 @@ export interface GlobeSettings {
   globeBackgroundColor: string;
 }
 
-const defaultSettings: GlobeSettings = {
+const STORAGE_KEY = "quakemonitor-settings";
+
+export const defaultSettings: GlobeSettings = {
   quakePointColorLow: "rgba(0, 255, 0, 0.6)",
   quakePointColorMid: "rgba(255, 255, 0, 0.6)",
   quakePointColorHigh: "rgba(255, 0, 0, 0.6)",
@@ -48,22 +50,61 @@ const defaultSettings: GlobeSettings = {
   globeBackgroundColor: "rgba(0,0,0,0)",
 };
 
+function loadSettings(): GlobeSettings {
+  if (typeof window === "undefined") return defaultSettings;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return defaultSettings;
+    const parsed = JSON.parse(stored);
+    // Merge with defaults so new fields are always present
+    return { ...defaultSettings, ...parsed };
+  } catch {
+    return defaultSettings;
+  }
+}
+
+function saveSettings(settings: GlobeSettings) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // localStorage full or unavailable
+  }
+}
+
 interface SettingsContextType {
   settings: GlobeSettings;
   updateSettings: (partial: Partial<GlobeSettings>) => void;
+  resetSettings: () => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<GlobeSettings>(defaultSettings);
+  const [loaded, setLoaded] = useState(false);
 
-  const updateSettings = (partial: Partial<GlobeSettings>) => {
+  // Load from localStorage on mount (client-only)
+  useEffect(() => {
+    setSettings(loadSettings());
+    setLoaded(true);
+  }, []);
+
+  // Persist to localStorage on every change (skip initial render before load)
+  useEffect(() => {
+    if (loaded) saveSettings(settings);
+  }, [settings, loaded]);
+
+  const updateSettings = useCallback((partial: Partial<GlobeSettings>) => {
     setSettings((prev) => ({ ...prev, ...partial }));
-  };
+  }, []);
+
+  const resetSettings = useCallback(() => {
+    setSettings(defaultSettings);
+  }, []);
 
   return (
-    <SettingsContext.Provider value={{ settings, updateSettings }}>
+    <SettingsContext.Provider value={{ settings, updateSettings, resetSettings }}>
       {children}
     </SettingsContext.Provider>
   );

@@ -1,0 +1,50 @@
+services:
+  quakemonitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quakemonitor-3d
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - GQ_API_URL=http://globalquake:8081
+    networks:
+      - quake-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  globalquake:
+    build:
+      context: .
+      dockerfile: Dockerfile.java
+    container_name: globalquake-server
+    restart: unless-stopped
+    environment:
+      - WEBHOOK_BASE_URL=http://quakemonitor:3000
+    depends_on:
+      quakemonitor:
+        condition: service_healthy
+    networks:
+      - quake-network
+    volumes:
+      - ./.GlobalQuakeServerData/volume/logs:/app/.GlobalQuakeServerData/volume/logs
+      - ./.GlobalQuakeServerData/globalQuake.properties:/app/.GlobalQuakeServerData/globalQuake.properties
+      - ./.GlobalQuakeServerData/hypocs.properties:/app/.GlobalQuakeServerData/hypocs.properties
+      - ./.GlobalQuakeServerData/stationDatabase:/app/.GlobalQuakeServerData/stationDatabase
+    ports:
+      - "8081:8081"
+    # GlobalQuake server exposes Seedlink ports internally
+    # No host port mapping needed unless you want external access
+
+networks:
+  quake-network:
+    driver: bridge
+    name: quake-network

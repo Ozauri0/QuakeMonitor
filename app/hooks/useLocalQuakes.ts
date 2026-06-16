@@ -5,6 +5,7 @@ import { QuakeEvent } from "@/app/types/quake";
 
 const LIVE_WINDOW_MS = 90_000;
 const ROTATION_INTERVAL_MS = 10_000;
+const MAX_ARCHIVED = 30;
 
 interface QuakeState {
   live: QuakeEvent[];
@@ -95,10 +96,13 @@ export function useLocalQuakes() {
           newFocusedIndex = 0;
         }
 
+        // Cap archived at MAX_ARCHIVED (most recent first)
+        const cappedArchived = Array.from(archivedMap.values()).slice(0, MAX_ARCHIVED);
+
         return {
           ...prev,
           live: remainingLive,
-          archived: Array.from(archivedMap.values()),
+          archived: cappedArchived,
           focusedLiveIndex: newFocusedIndex,
         };
       });

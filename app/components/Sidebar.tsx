@@ -20,6 +20,7 @@ import { useSettings } from "@/app/context/SettingsContext";
 
 interface SidebarProps {
   archived: QuakeEvent[];
+  archivedTotal: number;
   connected: boolean;
   autoTrack: boolean;
   onAutoTrackChange: (enabled: boolean) => void;
@@ -34,6 +35,7 @@ interface SidebarProps {
 
 export default function Sidebar({
   archived,
+  archivedTotal,
   connected,
   autoTrack,
   onAutoTrackChange,
@@ -146,6 +148,13 @@ export default function Sidebar({
               <Settings className="w-3 h-3" />
               Panel de Administración
             </Link>
+            <Link
+              href="/admin/providers"
+              className="w-full px-3 py-2 rounded text-xs font-semibold transition-colors flex items-center justify-center gap-2 bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 mt-2"
+            >
+              <Radio className="w-3 h-3" />
+              Gestión de Estaciones
+            </Link>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -214,7 +223,9 @@ export default function Sidebar({
           )}
 
           <div className="p-3 border-t border-gray-800 text-xs text-gray-600 text-center">
-            {archived.length} eventos archivados
+            {archivedTotal > archived.length
+              ? `${archived.length} de ${archivedTotal} eventos archivados`
+              : `${archivedTotal} eventos archivados`}
           </div>
         </aside>
       )}

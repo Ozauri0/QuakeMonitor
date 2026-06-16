@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import GlobeView from "./GlobeView";
 import Sidebar from "./Sidebar";
 import { LiveMainCard, LiveSecondaryCard } from "./LiveDashboard";
@@ -21,12 +21,23 @@ export default function QuakeMap() {
   const [showStations, setShowStations] = useState(true);
   const [showArchived, setShowArchived] = useState(true);
 
+  const VISIBLE_ARCHIVED = 10;
+  const archivedForDisplay = archived.slice(0, VISIBLE_ARCHIVED);
+
+  // Auto-stop replay after 10 seconds
+  useEffect(() => {
+    if (!replayingId) return;
+    const timeout = setTimeout(() => setReplayingId(null), 10_000);
+    return () => clearTimeout(timeout);
+  }, [replayingId]);
+
   return (
     <div className="relative h-screen w-screen bg-black overflow-hidden">
       <div className="absolute inset-0 z-0 globe-wrapper">
         <GlobeView
           live={live}
-          archived={archived}
+          archived={archivedForDisplay}
+          archivedAll={archived}
           focusedQuake={focusedLiveQuake}
           replayingId={replayingId}
           autoTrack={autoTrack}
@@ -59,7 +70,8 @@ export default function QuakeMap() {
       {/* Archived Sidebar - Right */}
       <div className="absolute right-0 top-0 bottom-0 z-50 w-full max-w-[20rem] md:w-96 pointer-events-none">
         <Sidebar
-          archived={archived}
+          archived={archivedForDisplay}
+          archivedTotal={archived.length}
           connected={connected}
           autoTrack={autoTrack}
           onAutoTrackChange={setAutoTrack}
