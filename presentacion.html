@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuakeMonitor 3D — Presentación</title>
+<style>
+  :root {
+    --bg: #050a16;
+    --surface: #0d1321;
+    --surface2: #131c2e;
+    --border: #1e2d4a;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --red: #ef4444;
+    --red-glow: rgba(239,68,68,0.3);
+    --blue: #3b82f6;
+    --amber: #f59e0b;
+    --green: #22c55e;
+    --cyan: #06b6d4;
+  }
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box }
+  html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); font-family:system-ui,-apple-system,sans-serif; color:var(--text); user-select:none }
+  
+  .deck-wrapper { position:fixed; inset:0; overflow:hidden; display:flex; align-items:center; justify-content:center }
+  .deck { width:1920px; height:1080px; position:relative; flex-shrink:0 }
+  
+  .slide { position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; padding:100px 140px; opacity:0; pointer-events:none; transition:opacity .4s }
+  .slide.active { opacity:1; pointer-events:auto }
+  
+  .slide h1 { font-size:80px; font-weight:800; letter-spacing:-.02em; line-height:1.1 }
+  .slide h2 { font-size:56px; font-weight:700; letter-spacing:-.01em }
+  .slide h3 { font-size:32px; font-weight:600; color:var(--muted); letter-spacing:.04em; text-transform:uppercase }
+  .slide p { font-size:28px; color:var(--muted); max-width:900px; line-height:1.5 }
+  .slide .accent { color:var(--red) }
+  
+  /* Globe container */
+  .globe-container { position:absolute; pointer-events:none }
+  .globe-container canvas { display:block }
+  
+  /* Cards */
+  .card-grid { display:grid; gap:32px; margin-top:50px }
+  .card-grid.col2 { grid-template-columns:1fr 1fr; max-width:1300px }
+  .card-grid.col3 { grid-template-columns:repeat(3,1fr); max-width:1500px }
+  
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:40px; transition:border-color .3s }
+  .card h4 { font-size:26px; font-weight:700; margin-bottom:12px }
+  .card p { font-size:20px; line-height:1.5 }
+  .card .icon { font-size:40px; margin-bottom:16px }
+  .card.highlight { border-color:var(--red); background:linear-gradient(135deg, rgba(239,68,68,.08), var(--surface)) }
+  
+  /* Timeline / Flow */
+  .flow { display:flex; align-items:center; gap:24px; margin-top:60px }
+  .flow-step { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:30px 24px; text-align:center; position:relative }
+  .flow-step h4 { font-size:22px; font-weight:700 }
+  .flow-step p { font-size:16px; margin-top:8px }
+  .flow-step::after { content:'→'; position:absolute; right:-28px; top:50%; transform:translateY(-50%); font-size:32px; color:var(--red); z-index:1 }
+  .flow-step:last-child::after { display:none }
+  
+  /* Code block */
+  .code-block { background:#0a0f1c; border:1px solid var(--border); border-radius:12px; padding:24px 32px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:18px; line-height:1.7; color:#94a3b8 }
+  .code-block .key { color:var(--cyan) }
+  .code-block .str { color:var(--green) }
+  .code-block .num { color:var(--amber) }
+  .code-block .comment { color:#475569 }
+  
+  /* Stats */
+  .stat { text-align:center }
+  .stat .number { font-size:64px; font-weight:800; letter-spacing:-.02em; background:linear-gradient(135deg,var(--red),var(--amber)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text }
+  .stat .label { font-size:18px; color:var(--muted); margin-top:8px; text-transform:uppercase; letter-spacing:.1em }
+  
+  .slide-counter { position:fixed; top:40px; right:60px; z-index:100; font-size:18px; color:var(--muted); font-variant-numeric:tabular-nums; pointer-events:none }
+  
+  /* Section label */
+  .section-label { display:inline-flex; align-items:center; gap:10px; margin-bottom:24px }
+  .section-label .line { width:40px; height:2px; background:var(--red) }
+  .section-label span { font-size:18px; color:var(--red); text-transform:uppercase; letter-spacing:.15em; font-weight:600 }
+  
+  /* Touch zones */
+  .touch-zone { position:fixed; top:0; bottom:0; width:40%; z-index:200; cursor:pointer }
+  
+  .mag { font-size:22px; font-weight:800; padding:4px 12px; border-radius:8px }
+  .mag.low { color:var(--green) }
+  .mag.mid { color:var(--amber) }
+  .mag.high { color:var(--red) }
+  
+  .pulse { width:16px; height:16px; border-radius:50%; background:var(--red); display:inline-block; position:relative }
+  .pulse::after { content:''; position:absolute; inset:-4px; border-radius:50%; border:2px solid var(--red); animation:pulse-anim 2s ease-out infinite }
+  @keyframes pulse-anim { 0% { transform:scale(1); opacity:1 } 100% { transform:scale(3); opacity:0 } }
+  
+  @media (prefers-reduced-motion:reduce) {
+    .pulse::after { animation:none }
+  }
+</style>
+</head>
+<body>
+
+<div class="deck-wrapper" id="wrapper">
+  <div class="deck" id="deck">
+
+    <!-- Slide 1: Title -->
+    <div class="slide active" data-slide="0">
+      <div class="globe-container" id="globe1" style="right:-300px;top:50%;transform:translateY(-50%);width:900px;height:900px"></div>
+      <div style="position:relative;z-index:1">
+        <div class="section-label"><div class="line"></div><span>Proyecto de Investigación</span></div>
+        <h1 style="max-width:750px">Quake<span class="accent">Monitor</span> 3D</h1>
+        <p style="margin-top:24px;font-size:32px">Plataforma de visualización sísmica tridimensional con datos en tiempo real desde la red GlobalQuake</p>
+        <p style="margin-top:16px;font-size:22px;color:var(--muted)">Christian Ferrer</p>
+        <div style="display:flex;gap:24px;margin-top:56px">
+          <div style="display:flex;align-items:center;gap:10px"><div class="pulse"></div><span style="font-size:22px;color:var(--red);font-weight:500">Datos en vivo</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px;color:var(--muted)">Interfaz 3D interactiva</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 2: Problem -->
+    <div class="slide" data-slide="1">
+      <div class="globe-container" id="globe2" style="right:-180px;top:55%;transform:translateY(-50%);width:600px;height:600px;opacity:.5"></div>
+      <div class="section-label"><div class="line"></div><span>Contexto</span></div>
+      <h2>El monitoreo sísmico tradicional es <span class="accent">limitado</span></h2>
+      <div class="card-grid col2" style="margin-top:60px">
+        <div class="card"><div class="icon">📍</div><h4>Visualización 2D estática</h4><p>Las interfaces actuales usan mapas planos que no transmiten la profundidad ni la escala real de los eventos sísmicos.</p></div>
+        <div class="card"><div class="icon">⏳</div><h4>Datos con retraso</h4><p>Muchas plataformas dependen de APIs con polling, perdiendo segundos críticos en la detección de sismos.</p></div>
+        <div class="card"><div class="icon">🔒</div><h4>Software propietario</h4><p>Las soluciones profesionales son costosas y cerradas, limitando la investigación y educación sísmica.</p></div>
+        <div class="card highlight"><div class="icon">🎯</div><h4>Falta de contexto histórico</h4><p>Con el tiempo, se pierde el historial sísmico, impidiendo análisis posteriores por estudiantes o aficionados.</p></div>
+      </div>
+    </div>
+
+    <!-- Slide 3: Solution -->
+    <div class="slide" data-slide="2">
+      <div class="globe-container" id="globe3" style="left:-220px;top:30%;width:700px;height:700px;opacity:.5"></div>
+      <div class="section-label"><div class="line"></div><span>Solución</span></div>
+      <h2 style="max-width:850px">Un globo 3D interactivo con datos <span class="accent">en tiempo real</span></h2>
+      <p style="margin-top:24px">Visualización tridimensional de la Tierra con anillos de onda sísmica animados, puntos de estaciones y segmentación de sismos en vivo vs archivados.</p>
+      <div class="card-grid col3" style="margin-top:50px">
+        <div class="stat"><div class="number">&lt; 90s</div><div class="label">Ventana de sismo en vivo</div></div>
+        <div class="stat"><div class="number">30</div><div class="label">Sismos archivados visibles</div></div>
+        <div class="stat"><div class="number">SSE</div><div class="label">Streaming en tiempo real</div></div>
+      </div>
+    </div>
+
+    <!-- Slide 4: Architecture -->
+    <div class="slide" data-slide="3">
+      <div class="section-label"><div class="line"></div><span>Arquitectura</span></div>
+      <h2>Flujo de datos</h2>
+      <div class="flow">
+        <div class="flow-step"><h4>🌍 GlobalQuake</h4><p>Servidor Java que recibe datos de estaciones sismológicas vía Seedlink</p></div>
+        <div class="flow-step"><h4>📡 Webhook</h4><p>POST HTTP a Next.js con datos del sismo: magnitud, ubicación, profundidad</p></div>
+        <div class="flow-step"><h4>⚡ SSE Stream</h4><p>Server-Sent Events transmite cada sismo al frontend sin polling</p></div>
+        <div class="flow-step"><h4>🌐 QuakeMonitor 3D</h4><p>Visualización en globo 3D con anillos, puntos y etiquetas</p></div>
+        <div class="flow-step"><h4>🗄️ MongoDB</h4><p>Persistencia de sismos para consulta histórica</p></div>
+      </div>
+      <div class="code-block" style="margin-top:50px">
+        <span class="comment">// SSE push desde Next.js</span><br>
+        <span class="key">export</span> <span class="key">async function</span> <span class="key">GET</span>() {<br>
+        &nbsp;&nbsp;<span class="key">const</span> stream = <span class="key">new</span> ReadableStream({<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">start</span>(<span class="key">controller</span>) {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;quakeEmitter.<span class="key">on</span>(<span class="str">"quake"</span>, (q) =><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;controller.enqueue(<span class="str">`data: ${JSON.stringify(q)}\n\n`</span>)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;);<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+        &nbsp;&nbsp;});<br>
+        }
+      </div>
+    </div>
+
+    <!-- Slide 5: Tech -->
+    <div class="slide" data-slide="4">
+      <div class="globe-container" id="globe5" style="right:-200px;top:40%;width:600px;height:600px;opacity:.4"></div>
+      <div class="section-label"><div class="line"></div><span>Tecnologías</span></div>
+      <h2>Stack <span class="accent">moderno</span></h2>
+      <div class="card-grid col3" style="margin-top:50px">
+        <div class="card"><h4 style="color:var(--cyan)">Next.js 16</h4><p>App Router, Server Components, API Routes, Turbopack para builds rápidos.</p></div>
+        <div class="card"><h4 style="color:var(--blue)">react-globe.gl</h4><p>Globo 3D interactivo con WebGL, polígonos de países, puntos y anillos animados.</p></div>
+        <div class="card"><h4 style="color:var(--green)">SSE + EventEmitter</h4><p>Server-Sent Events nativos con EventEmitter de Node.js para broadcast en tiempo real.</p></div>
+        <div class="card"><h4 style="color:var(--amber)">MongoDB</h4><p>Persistencia de sismos con upsert por ID. Historial consultable sin duplicados.</p></div>
+        <div class="card"><h4 style="color:var(--red)">Docker + Compose</h4><p>Contenedores para Next.js, GlobalQuake Java y MongoDB. Despliegue con un comando.</p></div>
+        <div class="card"><h4 style="color:var(--muted)">JWT + bcrypt</h4><p>Autenticación segura con cookies httpOnly. Panel admin protegido por middleware.</p></div>
+      </div>
+    </div>
+
+    <!-- Slide 6: Features -->
+    <div class="slide" data-slide="5">
+      <div class="section-label"><div class="line"></div><span>Funcionalidades</span></div>
+      <h2>Características <span class="accent">principales</span></h2>
+      <div class="card-grid col2" style="margin-top:50px">
+        <div class="card highlight"><h4>🔴 Sismos en vivo</h4><p>Eventos con menos de 90s desde su última actualización se muestran con anillos de onda expansiva animados en el globo. Rotación automática cada 10s.</p></div>
+        <div class="card"><h4>📁 Sismos archivados</h4><p>Panel lateral con hasta 30 sismos históricos. Click para reproducir animación en el globo y volar la cámara a su ubicación.</p></div>
+        <div class="card"><h4>🎨 Personalización visual</h4><p>Colores por magnitud, altura de anillos, velocidad de propagación, tamaño de puntos. Todo configurable en tiempo real.</p></div>
+        <div class="card"><h4>📍 Estaciones y etiquetas</h4><p>Triángulos que marcan estaciones sismológicas activas. Etiquetas de regiones y ciudades. Visibilidad toggleable.</p></div>
+        <div class="card"><h4>🧪 Simulador de sismos</h4><p>API para inyectar sismos de prueba con parámetros personalizados. Ideal para desarrollo y demostraciones.</p></div>
+        <div class="card"><h4>🔐 Panel de administración</h4><p>Login JWT, roles admin/user. Gestión de estaciones, configuración de colores y ajustes del globo.</p></div>
+      </div>
+    </div>
+
+    <!-- Slide 7: Magnitude -->
+    <div class="slide" data-slide="6">
+      <div class="globe-container" id="globe7" style="right:-150px;top:35%;width:550px;height:550px;opacity:.35"></div>
+      <div class="section-label"><div class="line"></div><span>Visualización</span></div>
+      <h2>Escala de <span class="accent">magnitud</span></h2>
+      <p style="margin-top:12px">Codificación visual por colores para identificación inmediata</p>
+      <div style="display:flex;gap:40px;margin-top:56px;align-items:center">
+        <div style="display:flex;flex-direction:column;gap:24px;flex:1">
+          <div style="display:flex;align-items:center;gap:20px"><span class="mag low" style="font-size:48px;min-width:100px">M 2.5</span><div><strong style="font-size:24px;color:var(--green)">Baja</strong><p style="font-size:18px;color:var(--muted);margin-top:4px">Menor a 3.0 — Verde</p></div></div>
+          <div style="display:flex;align-items:center;gap:20px"><span class="mag mid" style="font-size:48px;min-width:100px">M 4.2</span><div><strong style="font-size:24px;color:var(--amber)">Media</strong><p style="font-size:18px;color:var(--muted);margin-top:4px">Entre 3.0 y 4.9 — Amarillo</p></div></div>
+          <div style="display:flex;align-items:center;gap:20px"><span class="mag high" style="font-size:48px;min-width:100px">M 6.8</span><div><strong style="font-size:24px;color:var(--red)">Alta</strong><p style="font-size:18px;color:var(--muted);margin-top:4px">5.0 o superior — Rojo</p></div></div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:20px">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px"><h4 style="margin-bottom:16px">Anillos de onda sísmica</h4><p style="font-size:20px">Cada sismo genera un anillo expansivo proporcional a su magnitud. Mayor magnitud = anillo más grande y visible.</p></div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px"><h4 style="margin-bottom:16px">Tamaño de punto</h4><p style="font-size:20px">Los puntos en el globo escalan con la magnitud. Configurable con <code style="color:var(--cyan);background:rgba(6,182,212,.1);padding:2px 8px;border-radius:4px">quakePointSizeBase</code></p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 8: Live vs Archived -->
+    <div class="slide" data-slide="7">
+      <div class="section-label"><div class="line"></div><span>Datos</span></div>
+      <h2>Live vs <span class="accent">Archived</span></h2>
+      <div class="card-grid col2" style="margin-top:50px">
+        <div class="card highlight" style="min-height:350px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px"><div class="pulse"></div><h4>En vivo</h4></div>
+          <p>Actualizados hace menos de 90 segundos. Aparecen como tarjetas a la izquierda y anillos animados en el globo. El foco rota automáticamente entre ellos cada 10 segundos.</p>
+          <div style="margin-top:24px;font-size:16px;color:var(--muted)">Conexión SSE permanente • Sin polling • Latencia mínima</div>
+        </div>
+        <div class="card" style="min-height:350px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px"><span style="font-size:32px">📁</span><h4>Archivados</h4></div>
+          <p>Sin actualizaciones por más de 90 segundos. Se mueven al panel lateral derecho. Hasta 30 visibles. Click para reproducir su animación y volar la cámara a su ubicación.</p>
+          <div style="margin-top:24px;font-size:16px;color:var(--muted)">Persistidos en MongoDB • Historial de 2 horas • Replay interactivo</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:50px;margin-top:40px">
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px"><span style="color:var(--green);font-weight:700">● Actualización</span><p style="font-size:18px;color:var(--muted);margin-top:8px">Nuevo dato del mismo sismo → se actualiza en su lugar, sin duplicar</p></div>
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px"><span style="color:var(--red);font-weight:700">● Expiración</span><p style="font-size:18px;color:var(--muted);margin-top:8px">90s sin updates → el sismo pasa de "live" a "archived" automáticamente</p></div>
+      </div>
+    </div>
+
+    <!-- Slide 9: Infrastructure -->
+    <div class="slide" data-slide="8">
+      <div class="globe-container" id="globe9" style="left:-180px;top:50%;width:550px;height:550px;opacity:.3"></div>
+      <div class="section-label"><div class="line"></div><span>Infraestructura</span></div>
+      <h2>Seguridad y <span class="accent">persistencia</span></h2>
+      <div class="card-grid col2" style="margin-top:50px">
+        <div class="card"><h4 style="color:var(--amber)">🔐 Autenticación JWT</h4><p>Cookies httpOnly con JWT firmado (HS256). Expiración de 24 horas. Middleware de Next.js que protege rutas /admin.</p></div>
+        <div class="card"><h4 style="color:var(--green)">🗄️ MongoDB</h4><p>Persistencia de sismos con upsert por ID — sin duplicados. Colección de usuarios con contraseñas hasheadas con bcrypt (12 rondas).</p></div>
+        <div class="card"><h4 style="color:var(--blue)">🐳 Docker</h4><p>3 contenedores: Next.js (Bun), GlobalQuake (Java 21) y MongoDB 7. Volumen persistente para datos. Healthchecks en todos los servicios.</p></div>
+        <div class="card"><h4 style="color:var(--cyan)">🛡️ CORS + Origins</h4><p>Configuración de IPs permitidas para desarrollo local y acceso desde red interna.</p></div>
+      </div>
+    </div>
+
+    <!-- Slide 10: Closing -->
+    <div class="slide" data-slide="9">
+      <div class="globe-container" id="globe10" style="right:-280px;top:50%;transform:translateY(-50%);width:850px;height:850px"></div>
+      <div style="position:relative;z-index:1">
+        <div class="section-label"><div class="line"></div><span>Conclusión</span></div>
+        <h1 style="max-width:800px">Quake<span class="accent">Monitor</span> 3D</h1>
+        <div style="display:flex;gap:80px;margin-top:60px">
+          <div>
+            <p style="font-size:26px;max-width:550px">Plataforma moderna, open source y en tiempo real para la visualización de actividad sísmica global. Combina un globo 3D interactivo con streaming SSE, persistencia en MongoDB y una arquitectura Dockerizada lista para producción.</p>
+            <div style="display:flex;gap:24px;margin-top:40px"><span style="font-size:20px;color:var(--muted)">Next.js 16</span><span style="font-size:20px;color:var(--muted)">•</span><span style="font-size:20px;color:var(--muted)">react-globe.gl</span><span style="font-size:20px;color:var(--muted)">•</span><span style="font-size:20px;color:var(--muted)">SSE</span><span style="font-size:20px;color:var(--muted)">•</span><span style="font-size:20px;color:var(--muted)">MongoDB</span><span style="font-size:20px;color:var(--muted)">•</span><span style="font-size:20px;color:var(--muted)">Docker</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;min-width:400px">
+            <div class="stat"><div class="number">3D</div><div class="label">Visualización</div></div>
+            <div class="stat"><div class="number">&lt;1s</div><div class="label">Latencia</div></div>
+            <div class="stat"><div class="number">OSS</div><div class="label">Licencia</div></div>
+            <div class="stat"><div class="number">⚡</div><div class="label">Tiempo Real</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="slide-counter" id="counter">1 / 10</div>
+<div class="touch-zone" id="touchLeft" style="left:0"></div>
+<div class="touch-zone" id="touchRight" style="right:0"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+<script>
+var THREE = window.THREE;
+
+// ---- Globe instances ----
+const globeConfigs = [
+  { id:'globe1', size:900, x:-300, y:-450 },
+  { id:'globe2', size:600, x:-180, y:-300, opacity:.5 },
+  { id:'globe3', size:700, x:-220, y:-350, opacity:.5 },
+  { id:'globe5', size:600, x:-200, y:-300, opacity:.4 },
+  { id:'globe7', size:550, x:-150, y:-275, opacity:.35 },
+  { id:'globe9', size:550, x:-180, y:-275, opacity:.3 },
+  { id:'globe10', size:850, x:-280, y:-425 },
+];
+
+const globes = [];
+
+function createGlobe(config) {
+  const container = document.getElementById(config.id);
+  if (!container) return null;
+  const size = config.size;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+  camera.position.z = 2.8;
+  const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+  renderer.setSize(size, size);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setClearColor(0x000000, 0);
+  container.appendChild(renderer.domElement);
+  
+  if (config.opacity) {
+    renderer.domElement.style.opacity = config.opacity;
+  }
+  
+  const geom = new THREE.SphereGeometry(1, 64, 64);
+  
+  // Dark Earth texture (same used by react-globe.gl in the app)
+  const texLoader = new THREE.TextureLoader();
+  const mat = new THREE.MeshPhongMaterial({
+    specular: new THREE.Color(0x111111),
+    shininess: 3,
+    color: 0x1a3a5c,
+  });
+  texLoader.load(
+    'https://unpkg.com/three-globe/example/img/earth-dark.jpg',
+    function(texture) { mat.map = texture; mat.color.set(0xffffff); mat.needsUpdate = true; },
+    undefined,
+    function() { /* fallback: keep the dark blue color */ }
+  );
+  const earth = new THREE.Mesh(geom, mat);
+  scene.add(earth);
+  
+  // Atmosphere glow
+  const glowGeom = new THREE.SphereGeometry(1.02, 64, 64);
+  const glowMat = new THREE.ShaderMaterial({
+    vertexShader: 'varying vec3 vN; void main() { vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p; vN = normalize(normalMatrix * normal); }',
+    fragmentShader: 'varying vec3 vN; void main() { float i = pow(0.68 - dot(vN, vec3(0,0,1)), 3.0); gl_FragColor = vec4(0.15, 0.35, 0.8, i * 0.55); }',
+    transparent:true, side:THREE.FrontSide, blending:THREE.AdditiveBlending, depthWrite:false,
+  });
+  const glow = new THREE.Mesh(glowGeom, glowMat);
+  scene.add(glow);
+  
+  const light1 = new THREE.DirectionalLight(0xffffff, 2.0);
+  light1.position.set(5, 3, 5);
+  scene.add(light1);
+  const light2 = new THREE.AmbientLight(0x406080, 1.0);
+  scene.add(light2);
+  
+  return { earth, scene, camera, renderer };
+}
+
+globes.push(createGlobe(globeConfigs[0]));
+globes.push(createGlobe(globeConfigs[1]));
+globes.push(createGlobe(globeConfigs[2]));
+globes.push(createGlobe(globeConfigs[3]));
+globes.push(createGlobe(globeConfigs[4]));
+globes.push(createGlobe(globeConfigs[5]));
+globes.push(createGlobe(globeConfigs[6]));
+
+// ---- Slide navigation ----
+const slides = document.querySelectorAll('.slide');
+const counter = document.getElementById('counter');
+let current = 0;
+
+function goTo(i) {
+  current = i;
+  slides.forEach((s, idx) => s.classList.toggle('active', idx === i));
+  counter.textContent = `${i + 1} / ${slides.length}`;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+    e.preventDefault();
+    goTo(Math.min(slides.length - 1, current + 1));
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    goTo(Math.max(0, current - 1));
+  } else if (e.key === 'Home') { e.preventDefault(); goTo(0); }
+  else if (e.key === 'End') { e.preventDefault(); goTo(slides.length - 1); }
+});
+
+// Touch / click zones
+document.getElementById('touchLeft').addEventListener('click', () => { goTo(Math.max(0, current - 1)); });
+document.getElementById('touchRight').addEventListener('click', () => { goTo(Math.min(slides.length - 1, current + 1)); });
+
+// ---- Responsive scaling ----
+const deck = document.getElementById('deck');
+function resize() {
+  const sw = window.innerWidth / 1920;
+  const sh = window.innerHeight / 1080;
+  const scale = Math.min(sw, sh);
+  deck.style.transform = `scale(${scale})`;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---- Animation loop ----
+function animate() {
+  requestAnimationFrame(animate);
+  globes.forEach(g => {
+    if (g) g.earth.rotation.y += 0.0008;
+  });
+  globes.forEach(g => {
+    if (g) g.renderer.render(g.scene, g.camera);
+  });
+}
+animate();
+</script>
+
+</body>
+</html>
