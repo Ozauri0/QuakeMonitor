@@ -65,6 +65,15 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     }
   }, [autoTrack, focusedQuake]);
 
+  // Fly to archived quake location when replay is triggered
+  useEffect(() => {
+    if (!globeRef.current || !replayingId) return;
+    const quake = archivedAll.find((q) => q.id === replayingId);
+    if (quake) {
+      globeRef.current.pointOfView({ lat: quake.lat, lng: quake.lon, altitude: 0.5 }, 2000);
+    }
+  }, [replayingId, archivedAll]);
+
   const handleGlobeReady = useCallback(() => {
     const globe = globeRef.current;
     if (!globe) return;
@@ -105,9 +114,19 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
       Object.assign(obj, { lat: q.lat, lng: q.lon, size: Math.max(0.2, q.mag * settings.quakePointSizeBase), color: getColor(q.mag) });
       result.push(obj);
     }
-    const ids = new Set(src.map((q) => q.id)); for (const id of pool.keys()) if (!ids.has(id)) pool.delete(id);
+    // Include replaying quake point even if it's beyond the displayed 10
+    if (replayingId) {
+      const r = archivedAll.find((q) => q.id === replayingId);
+      if (r && !result.find((x) => x === pool.get(r.id))) {
+        let obj = pool.get(r.id); if (!obj) { obj = {}; pool.set(r.id, obj); }
+        Object.assign(obj, { lat: r.lat, lng: r.lon, size: Math.max(0.2, r.mag * settings.quakePointSizeBase), color: getColor(r.mag) });
+        result.push(obj);
+      }
+    }
+    const ids = new Set(src.map((q) => q.id)); if (replayingId) ids.add(replayingId);
+    for (const id of pool.keys()) if (!ids.has(id)) pool.delete(id);
     return result;
-  }, [live, archived, showArchived, settings]);
+  }, [live, archived, archivedAll, showArchived, replayingId, settings]);
 
   const htmlElementsData = useMemo(() => {
     const pool = htmlLabelPool.current;

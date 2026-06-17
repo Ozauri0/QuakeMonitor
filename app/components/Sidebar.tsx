@@ -50,6 +50,9 @@ export default function Sidebar({
   const [isOpen, setIsOpen] = useState(true);
   const { settings } = useSettings();
 
+  const SIDEBAR_MAX_ARCHIVED = 30;
+  const displayArchived = archived.slice(0, SIDEBAR_MAX_ARCHIVED);
+
   function getMagColorClass(mag: number) {
     if (mag >= settings.quakeMagMidMax) return "text-red-400";
     if (mag >= settings.quakeMagLowMax) return "text-yellow-400";
@@ -158,12 +161,12 @@ export default function Sidebar({
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {archived.length === 0 && (
+            {displayArchived.length === 0 && (
               <p className="text-gray-500 text-sm text-center mt-8">
                 No hay sismos archivados...
               </p>
             )}
-            {archived.map((quake) => {
+            {displayArchived.map((quake) => {
               const isReplaying = replayingId === quake.id;
               return (
                 <div
@@ -223,8 +226,8 @@ export default function Sidebar({
           )}
 
           <div className="p-3 border-t border-gray-800 text-xs text-gray-600 text-center">
-            {archivedTotal > archived.length
-              ? `${archived.length} de ${archivedTotal} eventos archivados`
+            {archivedTotal > displayArchived.length
+              ? `${displayArchived.length} de ${archivedTotal} eventos archivados`
               : `${archivedTotal} eventos archivados`}
           </div>
         </aside>

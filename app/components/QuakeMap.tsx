@@ -21,8 +21,8 @@ export default function QuakeMap() {
   const [showStations, setShowStations] = useState(true);
   const [showArchived, setShowArchived] = useState(true);
 
-  const VISIBLE_ARCHIVED = 10;
-  const archivedForDisplay = archived.slice(0, VISIBLE_ARCHIVED);
+  const GLOBE_ARCHIVED_MAX = 10;
+  const archivedForGlobe = archived.slice(0, GLOBE_ARCHIVED_MAX);
 
   // Auto-stop replay after 10 seconds
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function QuakeMap() {
       <div className="absolute inset-0 z-0 globe-wrapper">
         <GlobeView
           live={live}
-          archived={archivedForDisplay}
+          archived={archivedForGlobe}
           archivedAll={archived}
           focusedQuake={focusedLiveQuake}
           replayingId={replayingId}
@@ -70,7 +70,7 @@ export default function QuakeMap() {
       {/* Archived Sidebar - Right */}
       <div className="absolute right-0 top-0 bottom-0 z-50 w-full max-w-[20rem] md:w-96 pointer-events-none">
         <Sidebar
-          archived={archivedForDisplay}
+          archived={archived}
           archivedTotal={archived.length}
           connected={connected}
           autoTrack={autoTrack}

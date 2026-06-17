@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { QuakeEvent } from "@/app/types/quake";
 import { broadcastQuake } from "@/lib/events";
+import { upsertQuake } from "@/lib/mongodb";
 
 declare global {
   var latestQuake: QuakeEvent | null;
@@ -61,7 +62,15 @@ export async function POST(request: Request) {
     console.log(`  Update:   ${quake.isUpdate}`);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
+    // 1. Broadcast to SSE immediately — real-time priority
     broadcastQuake(quake);
+
+    // 2. Persist to MongoDB (fire-and-forget, skip ping/test events)
+    if (!quake.id.startsWith("ping-") && !quake.id.startsWith("sim-")) {
+      upsertQuake(quake).catch((err) =>
+        console.error("[WEBHOOK] MongoDB save failed:", err)
+      );
+    }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch {

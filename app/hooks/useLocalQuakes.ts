@@ -12,6 +12,7 @@ interface QuakeState {
   archived: QuakeEvent[];
   focusedLiveIndex: number;
   lastReceivedAt: Record<string, number>;
+  historyLoaded: boolean;
 }
 
 export function useLocalQuakes() {
@@ -20,8 +21,70 @@ export function useLocalQuakes() {
     archived: [],
     focusedLiveIndex: 0,
     lastReceivedAt: {},
+    historyLoaded: false,
   });
   const [connected, setConnected] = useState(false);
+
+  // Load historical quakes from MongoDB on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHistory() {
+      try {
+        const res = await fetch("/api/quakes/history?hours=2");
+        if (!res.ok) return;
+        const quakes: (QuakeEvent & { updatedAt?: number })[] = await res.json();
+        if (cancelled || quakes.length === 0) return;
+
+        const now = Date.now();
+        const live: QuakeEvent[] = [];
+        const archived: QuakeEvent[] = [];
+        const lastReceivedAt: Record<string, number> = {};
+
+        for (const q of quakes) {
+          // Use updatedAt as lastReceivedAt — falls back to current time if missing
+          const receivedAt = q.updatedAt || now;
+          lastReceivedAt[q.id] = receivedAt;
+
+          const quakeEvent: QuakeEvent = {
+            id: q.id,
+            lat: q.lat,
+            lon: q.lon,
+            depth: q.depth,
+            mag: q.mag,
+            locationName: q.locationName,
+            time: q.time,
+            isUpdate: q.isUpdate,
+          };
+
+          if (now - receivedAt < LIVE_WINDOW_MS) {
+            live.push(quakeEvent);
+          } else {
+            archived.push(quakeEvent);
+          }
+        }
+
+        // Sort live by recency
+        live.sort((a, b) => lastReceivedAt[b.id] - lastReceivedAt[a.id]);
+        // Sort archived by time descending, cap at MAX_ARCHIVED
+        archived.sort((a, b) => b.time - a.time);
+
+        setState((prev) => ({
+          ...prev,
+          live,
+          archived: archived.slice(0, MAX_ARCHIVED),
+          lastReceivedAt,
+          historyLoaded: true,
+        }));
+      } catch (err) {
+        console.error("[HISTORY] Failed to load:", err);
+        setState((prev) => ({ ...prev, historyLoaded: true }));
+      }
+    }
+
+    loadHistory();
+    return () => { cancelled = true; };
+  }, []);
 
   const processQuake = useCallback((quake: QuakeEvent) => {
     const now = Date.now();

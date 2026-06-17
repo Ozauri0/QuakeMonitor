@@ -25,6 +25,7 @@ export async function POST(request: Request) {
       isUpdate,
     };
 
+    // Broadcast to SSE immediately (no MongoDB — test event)
     broadcastQuake(quake);
 
     return NextResponse.json({ success: true, quake }, { status: 200 });

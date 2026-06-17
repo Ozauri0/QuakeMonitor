@@ -1,4 +1,21 @@
 services:
+  mongodb:
+    image: mongo:7
+    container_name: quake-mongodb
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_DATABASE=quakes
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - quake-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   quakemonitor:
     build:
       context: .
@@ -12,6 +29,10 @@ services:
       - PORT=3000
       - HOSTNAME=0.0.0.0
       - GQ_API_URL=http://globalquake:8081
+      - MONGODB_URI=mongodb://mongodb:27017/quakes
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
       - quake-network
     healthcheck:
@@ -41,8 +62,9 @@ services:
       - ./.GlobalQuakeServerData/stationDatabase:/app/.GlobalQuakeServerData/stationDatabase
     ports:
       - "8081:8081"
-    # GlobalQuake server exposes Seedlink ports internally
-    # No host port mapping needed unless you want external access
+
+volumes:
+  mongo-data:
 
 networks:
   quake-network:
