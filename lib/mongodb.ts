@@ -18,6 +18,16 @@ interface QuakeDoc {
   updatedAt: number;
 }
 
+export interface UserDoc {
+  _id: string; // email
+  firstName: string;
+  lastName: string;
+  email: string;
+  passwordHash: string;
+  role: "admin" | "user";
+  createdAt: number;
+}
+
 async function getClient(): Promise<MongoClient> {
   if (!client) {
     client = new MongoClient(MONGODB_URI, {
@@ -40,6 +50,11 @@ export async function getDb(): Promise<Db> {
 export async function getQuakesCollection(): Promise<Collection<QuakeDoc>> {
   const database = await getDb();
   return database.collection<QuakeDoc>("quakes");
+}
+
+export async function getUsersCollection(): Promise<Collection<UserDoc>> {
+  const database = await getDb();
+  return database.collection<UserDoc>("users");
 }
 
 // Upsert a quake event — inserts new or updates existing by ID
@@ -105,5 +120,46 @@ export async function getRecentQuakes(hours: number = 2): Promise<any[]> {
   } catch (err) {
     console.error("[MONGODB] Failed to fetch recent quakes:", err);
     return [];
+  }
+}
+
+// Find user by email
+export async function findUserByEmail(email: string): Promise<UserDoc | null> {
+  try {
+    const col = await getUsersCollection();
+    return col.findOne({ _id: email.toLowerCase() });
+  } catch (err) {
+    console.error("[MONGODB] Failed to find user:", err);
+    return null;
+  }
+}
+
+// Create user
+export async function createUser(user: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  passwordHash: string;
+  role: "admin" | "user";
+}): Promise<boolean> {
+  try {
+    const col = await getUsersCollection();
+    await col.insertOne({
+      _id: user.email.toLowerCase(),
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email.toLowerCase(),
+      passwordHash: user.passwordHash,
+      role: user.role,
+      createdAt: Date.now(),
+    });
+    return true;
+  } catch (err: any) {
+    if (err.code === 11000) {
+      console.error("[MONGODB] User already exists:", user.email);
+    } else {
+      console.error("[MONGODB] Failed to create user:", err);
+    }
+    return false;
   }
 }

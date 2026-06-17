@@ -44,6 +44,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Copy public files if they exist
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# Copy scripts
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+
 USER nextjs
 
 EXPOSE 3000
