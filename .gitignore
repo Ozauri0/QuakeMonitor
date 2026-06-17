@@ -41,7 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 # GlobalQuake Server logs & data
-.GlobalQuakeServerData/
+.GlobalQuakeServerData/*
+!.GlobalQuakeServerData/stationDatabase/
+!.GlobalQuakeServerData/stationDatabase/database.dat
 .GlobalQuakeData/
 *.log
 logs/
