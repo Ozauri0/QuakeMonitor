@@ -33,6 +33,7 @@ app/
     LiveDashboard.tsx           # Live quake cards (main + secondary)
     QuakeMap.tsx                # Main layout (globe + overlays)
     Sidebar.tsx                 # Right panel (archived quakes, controls, simulate, visual settings)
+    FpsCounter.tsx              # Dev FPS counter (toggle with F key, disable via DEV_FPS_ENABLED flag)
   context/
     SettingsContext.tsx         # React Context for live visual customization of the globe
   hooks/
@@ -121,3 +122,20 @@ All fields are optional — omitted values fall back to random defaults.
 - `react-globe.gl` colors MUST be rgba strings, not arrays.
 - `HttpClient` in Java MUST use `HTTP_1_1` to connect to Next.js dev server.
 - The dev server port may vary (3000, 3001, 3002). Check with netstat.
+
+## Performance Tuning
+Optimizaciones en `app/components/GlobeView.tsx`. El principal cuello de botella identificado: **los 177 polígonos extruidos generaban ~530 draw calls por frame** (cara lateral + tapa + borde × 177 países). 
+
+**Solución**: las fronteras ahora se renderizan como **una sola `THREE.LineSegments`** usando `topojson.mesh()` → 1 draw call para TODOS los bordes del mundo.
+
+| Flag | Default | Qué hace |
+|---|---|---|
+| `SHOW_COUNTRY_BORDERS` | `true` | Fronteras de países (1 draw call con `customLayerData`) |
+| `SHOW_ATMOSPHERE` | `false` | Glow azul del globo (shader full-screen) |
+| `BORDER_ALTITUDE` | `0.002` | Altura de las líneas de frontera sobre el globo |
+
+Optimizaciones CPU (ya aplicadas, sin impacto visual):
+- `htmlElementVisibilityModifier`: usa `el.dataset.type` directo + altitud cacheada vía `onZoom` (sin `querySelector` ni `pointOfView()` por label)
+
+## Dev Tools
+- **FPS Counter** (`app/components/FpsCounter.tsx`): Presiona la tecla `F` en el frontend para mostrar/ocultar un contador de FPS abajo a la izquierda. Para deshabilitarlo completamente (evitar que usuarios finales lo activen), cambiar `const DEV_FPS_ENABLED = true` a `false` en el archivo.

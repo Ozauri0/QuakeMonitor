@@ -30,6 +30,7 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.CircleMarker>>(new Map());
   const initializedRef = useRef(false);
+  const rendererRef = useRef<L.SVG | null>(null);
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
 
   // Derived station map — no state, no extra re-render
@@ -46,6 +47,10 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
+    // Create SVG renderer explicitly — attach to map before adding layers
+    const svgRenderer = L.svg({ padding: 0.5 });
+    rendererRef.current = svgRenderer;
+
     const map = L.map(mapRef.current, {
       center: [-33.45, -70.67],
       zoom: 4,
@@ -53,9 +58,7 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
       maxZoom: 18,
       zoomControl: true,
       attributionControl: false,
-      renderer: L.canvas({ padding: 0.5 }),
-      preferCanvas: true,
-      // Performance: skip animations for pan/zoom
+      renderer: svgRenderer,
       zoomAnimation: false,
       markerZoomAnimation: false,
       fadeAnimation: false,
@@ -64,20 +67,22 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       subdomains: "abcd",
       maxZoom: 19,
-      // Cache tiles for faster panning
       updateWhenIdle: true,
       updateWhenZooming: false,
     }).addTo(map);
 
     mapInstanceRef.current = map;
 
+    setTimeout(() => map.invalidateSize(), 100);
+
     return () => {
       map.remove();
       mapInstanceRef.current = null;
+      rendererRef.current = null;
     };
   }, []);
 
-  // Stable click handler — doesn't depend on onHighlightStation changing
+  // Stable click handler
   const handleMarkerClick = useCallback(
     (stationId: string, lat: number, lon: number) => {
       setSelectedStationId((prev) => (prev === stationId ? null : stationId));
@@ -90,10 +95,10 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
     [onHighlightStation]
   );
 
-  // Optimized marker update — only add/remove/update what changed
+  // Add/update markers when stations change
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || stations.length === 0) return;
 
     const currentIds = new Set(stations.map((s) => s.id));
     const existingIds = new Set(markersRef.current.keys());
@@ -107,22 +112,41 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
       }
     }
 
-    // Add new markers / update existing
+    // Add/update in batches to avoid freezing the UI
+    const toAdd: GQStation[] = [];
     for (const s of stations) {
-      const fillColor = s.isActive ? "#00e5ff" : "#4ade80";
-      const radius = s.isActive ? 4 : 3;
-      const weight = s.isActive ? 1.5 : 1;
+      const existing = markersRef.current.get(s.id);
+      if (!existing) {
+        toAdd.push(s);
+      } else {
+        const fillColor = s.isActive ? "#00e5ff" : "#4ade80";
+        if (existing.options.fillColor !== fillColor) {
+          existing.setStyle({
+            fillColor,
+            color: fillColor,
+            radius: s.isActive ? 4 : 3,
+            weight: s.isActive ? 1.5 : 1,
+          });
+        }
+      }
+    }
 
-      let marker = markersRef.current.get(s.id);
-
-      if (!marker) {
-        // New marker
-        marker = L.circleMarker([s.lat, s.lon], {
-          radius,
+    // Batch-add new markers with requestAnimationFrame to avoid UI freeze
+    if (toAdd.length === 0) return;
+    const m = map; // stable ref for closure
+    let i = 0;
+    const BATCH_SIZE = 200;
+    function addBatch() {
+      const end = Math.min(i + BATCH_SIZE, toAdd.length);
+      for (; i < end; i++) {
+        const s = toAdd[i];
+        const fillColor = s.isActive ? "#00e5ff" : "#4ade80";
+        const marker = L.circleMarker([s.lat, s.lon], {
+          radius: s.isActive ? 4 : 3,
           fillColor,
           fillOpacity: 0.7,
           color: fillColor,
-          weight,
+          weight: s.isActive ? 1.5 : 1,
           opacity: 0.8,
         });
 
@@ -135,14 +159,13 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
         });
 
         markersRef.current.set(sid, marker);
-        marker.addTo(map);
-      } else {
-        // Update only if style actually changed
-        if (marker.options.fillColor !== fillColor) {
-          marker.setStyle({ fillColor, color: fillColor, radius, weight });
-        }
+        marker.addTo(m);
+      }
+      if (i < toAdd.length) {
+        requestAnimationFrame(addBatch);
       }
     }
+    addBatch();
   }, [stations, handleMarkerClick]);
 
   // Fit bounds on first load only
@@ -166,13 +189,12 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
   const handleToggle = useCallback(() => {
     if (!selectedStation) return;
     onToggleStation(selectedStation.id, !selectedStation.isActive);
-    // Optimistic local update
-    setSelectedStationId((prev) => prev); // keep same id, station data will update from parent
+    setSelectedStationId((prev) => prev);
   }, [selectedStation, onToggleStation]);
 
   return (
     <div className="relative w-full h-full">
-      <div ref={mapRef} className="w-full h-full" />
+      <div ref={mapRef} className="absolute inset-0" />
 
       {/* Station Detail Panel */}
       {selectedStation && (

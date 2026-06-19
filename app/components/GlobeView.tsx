@@ -4,9 +4,10 @@ import { useRef, useEffect, useState, useMemo, useCallback, memo } from "react";
 import dynamic from "next/dynamic";
 import { QuakeEvent } from "@/app/types/quake";
 import { Station } from "@/app/types/station";
-import { feature } from "topojson-client";
+import { mesh } from "topojson-client";
 import { useSettings } from "@/app/context/SettingsContext";
 import { CHILE_LOCATIONS } from "@/lib/locationLabels";
+import * as THREE from "three";
 
 const Globe = dynamic(() => import("react-globe.gl"), { ssr: false });
 
@@ -22,6 +23,12 @@ interface GlobeViewProps {
   showArchived: boolean;
 }
 
+// ── Developer toggles ──
+const SHOW_COUNTRY_BORDERS = true;   // bordes de países (1 solo draw call)
+const SHOW_ATMOSPHERE = false;        // glow alrededor del globo
+const BORDER_ALTITUDE = 0.002;        // altura de las líneas sobre el globo
+// ────────────────────────
+
 const accLat = (d: any) => d.lat;
 const accLng = (d: any) => d.lng;
 const accMaxR = (d: any) => d.maxR;
@@ -29,21 +36,19 @@ const accPropagation = (d: any) => d.propagationSpeed;
 const accRepeat = (d: any) => d.repeatPeriod;
 const accSize = (d: any) => d.size;
 const accColor = (d: any) => d.color;
-const accGeoJson = (d: any) => d.geometry;
-const constPolygonSide = () => "rgba(120, 120, 120, 0.45)";
-const constPolygonCap = () => "rgba(0, 0, 0, 0)";
-const constPolygonStroke = () => "rgba(140, 140, 140, 0.55)";
-const constPolygonLabel = () => "";
 const RENDERER_CONFIG = { antialias: false, powerPreference: "high-performance" as const };
 
 function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, autoTrack, stations, showStations, showArchived }: GlobeViewProps) {
   const { settings } = useSettings();
   const globeRef = useRef<any>(null);
-  const [countries, setCountries] = useState<any[]>([]);
   const globeReadyRef = useRef(false);
   const ringPool = useRef<Map<string, any>>(new Map());
   const pointPool = useRef<Map<string, any>>(new Map());
   const htmlLabelPool = useRef<Map<string, any>>(new Map());
+  const lastAltRef = useRef(1);
+
+  // Country borders rendered as a single THREE.LineSegments (1 draw call total)
+  const [borderLine, setBorderLine] = useState<THREE.LineSegments | null>(null);
 
   function getColor(mag: number) {
     if (mag < settings.quakeMagLowMax) return settings.quakePointColorLow;
@@ -51,26 +56,87 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     return settings.quakePointColorHigh;
   }
 
+  // Step 1: Load country borders as a merged MultiLineString
   useEffect(() => {
+    if (!SHOW_COUNTRY_BORDERS) return;
     fetch("//unpkg.com/world-atlas@2/countries-110m.json")
       .then((r) => r.json())
-      .then((world) => { setCountries((feature(world, world.objects.countries) as any).features || []); })
+      .then((world) => {
+        // mesh() with always-true filter = ALL arcs (internal borders + coastlines)
+        const m: any = mesh(world, world.objects.countries, () => true);
+        return m?.coordinates as [number, number][][] | null;
+      })
+      .then((coords) => {
+        if (!coords) return;
+        // Store raw coords — will build geometry once globe is ready
+        buildBorderLine(coords);
+      })
       .catch((err) => console.error("Failed to load countries:", err));
   }, []);
+
+  // Step 2: Build THREE.LineSegments from coordinates
+  function buildBorderLine(coords: [number, number][][]) {
+    const globe = globeRef.current;
+    if (!globe) {
+      // Globe not ready yet — retry
+      setTimeout(() => buildBorderLine(coords), 200);
+      return;
+    }
+
+    const positions: number[] = [];
+    for (const line of coords) {
+      for (let i = 0; i < line.length - 1; i++) {
+        const [lng, lat] = line[i];
+        const [lng2, lat2] = line[i + 1];
+        const p1 = globe.getCoords(lat, lng, BORDER_ALTITUDE);
+        const p2 = globe.getCoords(lat2, lng2, BORDER_ALTITUDE);
+        positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+      }
+    }
+
+    if (positions.length === 0) return;
+
+    // Clean up previous
+    if (borderLine) {
+      borderLine.geometry.dispose();
+      (borderLine.material as THREE.Material).dispose();
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x888888,
+      transparent: true,
+      opacity: 0.55,
+      depthTest: true,
+    });
+    setBorderLine(new THREE.LineSegments(geom, mat));
+  }
+
+  // Cleanup border line on unmount
+  useEffect(() => {
+    return () => {
+      if (borderLine) {
+        borderLine.geometry.dispose();
+        (borderLine.material as THREE.Material).dispose();
+      }
+    };
+  }, [borderLine]);
 
   useEffect(() => {
     if (!globeRef.current) return;
     if (autoTrack && focusedQuake) {
       globeRef.current.pointOfView({ lat: focusedQuake.lat, lng: focusedQuake.lon, altitude: 0.5 }, 2000);
+      lastAltRef.current = 0.5;
     }
   }, [autoTrack, focusedQuake]);
 
-  // Fly to archived quake location when replay is triggered
   useEffect(() => {
     if (!globeRef.current || !replayingId) return;
     const quake = archivedAll.find((q) => q.id === replayingId);
     if (quake) {
       globeRef.current.pointOfView({ lat: quake.lat, lng: quake.lon, altitude: 0.5 }, 2000);
+      lastAltRef.current = 0.5;
     }
   }, [replayingId, archivedAll]);
 
@@ -79,7 +145,11 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     if (!globe) return;
     try { globe.renderer()?.setPixelRatio?.(Math.min(window.devicePixelRatio, 1.5)); } catch {}
     globe.pointOfView({ lat: 25, lng: 10, altitude: 2.8 }, 0);
-    setTimeout(() => globe.pointOfView({ lat: -35, lng: -70, altitude: 0.8 }, 3000), 400);
+    lastAltRef.current = 2.8;
+    setTimeout(() => {
+      globe.pointOfView({ lat: -35, lng: -70, altitude: 0.8 }, 3000);
+      lastAltRef.current = 0.8;
+    }, 400);
     globeReadyRef.current = true;
   }, []);
 
@@ -92,7 +162,6 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
       result.push(obj);
     }
     if (replayingId) {
-      // Look up in all archived (not just displayed 10) so replays beyond the visible set work
       const r = archivedAll.find((q) => q.id === replayingId);
       if (r && !result.find((x) => x === pool.get(r.id))) {
         let obj = pool.get(r.id); if (!obj) { obj = {}; pool.set(r.id, obj); }
@@ -114,7 +183,6 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
       Object.assign(obj, { lat: q.lat, lng: q.lon, size: Math.max(0.2, q.mag * settings.quakePointSizeBase), color: getColor(q.mag) });
       result.push(obj);
     }
-    // Include replaying quake point even if it's beyond the displayed 10
     if (replayingId) {
       const r = archivedAll.find((q) => q.id === replayingId);
       if (r && !result.find((x) => x === pool.get(r.id))) {
@@ -174,7 +242,6 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
 
     if (d.type === "station") {
       wrapper.style.top = "0";
-      // Scale triangle with stationPointSize setting (default 0.15 = scale 1.0)
       const scale = settings.stationPointSize / 0.15;
       const halfBase = Math.round(4 * scale);
       const height = Math.round(7 * scale);
@@ -210,23 +277,14 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
   }, [settings.stationColorActive, settings.stationPointSize]);
 
   const htmlElementVisibilityModifier = useCallback((el: HTMLElement, isVisible: boolean) => {
-    // Hide elements on the far side of the globe — this prevents duplicate labels
     if (!isVisible) {
       el.style.visibility = "hidden";
       return;
     }
     el.style.visibility = "visible";
 
-    // Zoom-based opacity: hide labels when zoomed too far out or too close
-    const type = (el as HTMLElement).querySelector("[data-type]")?.getAttribute("data-type")
-      || el.dataset?.type || "";
-
-    // Try to get altitude from the globe camera
-    let alt = 1;
-    try {
-      const pov = globeRef.current?.pointOfView?.();
-      if (pov) alt = pov.altitude;
-    } catch {}
+    const type = el.dataset?.type || "";
+    let alt = lastAltRef.current;
 
     let opacity = 1;
     if (type === "region") {
@@ -242,6 +300,16 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     el.style.opacity = String(opacity);
   }, []);
 
+  // Custom layer: 1 data item → 1 THREE.LineSegments with ALL borders
+  const customLayerData = useMemo(() => {
+    if (!borderLine) return [];
+    return [{}];
+  }, [borderLine]);
+
+  const customThreeObject = useCallback(() => {
+    return borderLine || new THREE.Object3D();
+  }, [borderLine]);
+
   return (
     <div className="relative w-full h-full">
       <Globe
@@ -251,16 +319,10 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
         backgroundColor="rgba(0,0,0,0)"
         atmosphereColor={settings.atmosphereColor}
         atmosphereAltitude={settings.atmosphereAltitude}
+        showAtmosphere={SHOW_ATMOSPHERE}
         rendererConfig={RENDERER_CONFIG}
         onGlobeReady={handleGlobeReady}
-        polygonsData={countries}
-        polygonGeoJsonGeometry={accGeoJson}
-        polygonAltitude={0.001}
-        polygonSideColor={constPolygonSide}
-        polygonCapColor={constPolygonCap}
-        polygonStrokeColor={constPolygonStroke}
-        polygonLabel={constPolygonLabel}
-        polygonsTransitionDuration={0}
+        onZoom={(pov) => { lastAltRef.current = pov.altitude; }}
         ringsData={ringsData}
         ringColor={accColor}
         ringMaxRadius={accMaxR}
@@ -275,6 +337,8 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
         htmlElement={htmlElement}
         htmlElementVisibilityModifier={htmlElementVisibilityModifier}
         htmlAltitude="altitude"
+        customLayerData={customLayerData}
+        customThreeObject={customThreeObject}
       />
     </div>
   );

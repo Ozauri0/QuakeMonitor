@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import GlobeView from "./GlobeView";
 import Sidebar from "./Sidebar";
 import { LiveMainCard, LiveSecondaryCard } from "./LiveDashboard";
+import FpsCounter from "./FpsCounter";
 import { useLocalQuakes } from "@/app/hooks/useLocalQuakes";
 import { useStations } from "@/app/hooks/useStations";
 
@@ -84,6 +85,9 @@ export default function QuakeMap() {
           onToggleArchived={() => setShowArchived((v) => !v)}
         />
       </div>
+
+      {/* FPS Counter (dev: presiona F para activar) */}
+      <FpsCounter />
     </div>
   );
 }
