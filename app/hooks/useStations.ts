@@ -15,25 +15,36 @@ export function useStations() {
       for (const s of incoming) {
         const existing = prevMap.get(s.id);
         if (!existing) {
-          prevMap.set(s.id, s);
-          changed = true;
-        } else if (
-          existing.lat !== s.lat ||
-          existing.lon !== s.lon ||
-          existing.active !== s.active ||
-          existing.name !== s.name ||
-          existing.network !== s.network
-        ) {
-          prevMap.set(s.id, s);
-          changed = true;
-        }
-      }
+          // New station — only add if active
+          if (s.active) {
+            prevMap.set(s.id, s);
+            changed = true;
+          }
+        } else {
+          // Existing station — update position/name/network, preserve active
+          // unless the incoming data explicitly sets active
+          const merged = { ...existing };
+          let fieldChanged = false;
 
-      if (incoming.length < prev.length) {
-        const incomingIds = new Set(incoming.map((s) => s.id));
-        for (const id of prevMap.keys()) {
-          if (!incomingIds.has(id)) {
-            prevMap.delete(id);
+          if (existing.lat !== s.lat) { merged.lat = s.lat; fieldChanged = true; }
+          if (existing.lon !== s.lon) { merged.lon = s.lon; fieldChanged = true; }
+          if (existing.name !== s.name) { merged.name = s.name; fieldChanged = true; }
+          if (existing.network !== s.network) { merged.network = s.network; fieldChanged = true; }
+
+          // Only update active if incoming explicitly provides it
+          // (webhook data has active=undefined, action/initial data has active=true/false)
+          if (s.active !== undefined && existing.active !== s.active) {
+            merged.active = s.active;
+            fieldChanged = true;
+          }
+
+          if (fieldChanged) {
+            // If station became inactive, remove it from the list
+            if (merged.active === false) {
+              prevMap.delete(s.id);
+            } else {
+              prevMap.set(s.id, merged);
+            }
             changed = true;
           }
         }

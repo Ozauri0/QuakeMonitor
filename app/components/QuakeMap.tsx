@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import GlobeView from "./GlobeView";
 import Sidebar from "./Sidebar";
 import { LiveMainCard, LiveSecondaryCard } from "./LiveDashboard";
@@ -17,6 +17,7 @@ export default function QuakeMap() {
     connected,
   } = useLocalQuakes();
   const { stations } = useStations();
+  const activeStations = useMemo(() => stations.filter((s) => s.active), [stations]);
   const [autoTrack, setAutoTrack] = useState(true);
   const [replayingId, setReplayingId] = useState<string | null>(null);
   const [showStations, setShowStations] = useState(true);
@@ -42,7 +43,7 @@ export default function QuakeMap() {
           focusedQuake={focusedLiveQuake}
           replayingId={replayingId}
           autoTrack={autoTrack}
-          stations={stations}
+          stations={activeStations}
           showStations={showStations}
           showArchived={showArchived}
         />

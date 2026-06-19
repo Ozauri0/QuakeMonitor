@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { broadcastStations } from "@/lib/events";
 
 const GQ_API_URL = process.env.GQ_API_URL || "http://localhost:8081";
 
@@ -24,6 +25,32 @@ export async function POST(request: Request) {
     });
 
     const data = await res.json();
+
+    // After successful toggle, fetch updated station data and broadcast via SSE
+    // so the main page (/) also reflects the change immediately
+    if (res.ok) {
+      try {
+        const stationsRes = await fetch(`${GQ_API_URL}/api/stations`, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        const stationsData = await stationsRes.json();
+        if (stationsData.stations) {
+          broadcastStations(
+            stationsData.stations.map((s: any) => ({
+              id: String(s.id),
+              lat: Number(s.lat),
+              lon: Number(s.lon),
+              name: String(s.stationCode || "Unknown"),
+              active: s.isActive === true,
+              network: s.network ? String(s.network) : undefined,
+            }))
+          );
+        }
+      } catch {
+        // Broadcast failed, not critical — the webhook will eventually sync
+      }
+    }
+
     return NextResponse.json(data, { status: res.status });
   } catch (e: any) {
     const isTimeout = e?.name === "TimeoutError" || e?.code === "ABORT_ERR";

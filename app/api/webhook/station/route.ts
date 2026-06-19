@@ -17,8 +17,8 @@ export async function POST(request: Request) {
       id: String(s.id),
       lat: Number(s.lat),
       lon: Number(s.lon),
-      name: String(s.name || "Unknown"),
-      active: s.active === true,
+      name: String(s.name || (s.network && s.stationCode ? s.network + "." + s.stationCode : "Unknown")),
+      active: undefined as any, // Don't override active — let initial fetch / action route control it
       network: s.network ? String(s.network) : undefined,
     }));
 

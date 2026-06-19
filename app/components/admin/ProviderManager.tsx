@@ -28,6 +28,8 @@ export default function ProviderManager() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [activating, setActivating] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 100;
 
   const fetchStations = useCallback(async () => {
     try {
@@ -67,15 +69,6 @@ export default function ProviderManager() {
 
   const toggleStation = useCallback(
     async (stationId: string, activate: boolean) => {
-      // Optimistic update: immediately update local state
-      setStations((prev) =>
-        prev.map((s) =>
-          s.id === stationId
-            ? { ...s, isActive: activate, selectedChannel: activate ? "pending" : undefined }
-            : s
-        )
-      );
-
       setActivating(stationId);
       try {
         const res = await fetch("/api/gq-stations/action", {
@@ -85,41 +78,13 @@ export default function ProviderManager() {
         });
         const data = await res.json();
         if (!res.ok) {
-          // Revert optimistic update on error
-          setStations((prev) =>
-            prev.map((s) =>
-              s.id === stationId
-                ? { ...s, isActive: !activate, selectedChannel: undefined }
-                : s
-            )
-          );
           alert(`Error: ${data.error || data.detail || "Unknown error"}`);
           return;
         }
 
-        // Apply the real response from GlobalQuake
-        if (data.stationId) {
-          setStations((prev) =>
-            prev.map((s) =>
-              s.id === stationId
-                ? {
-                    ...s,
-                    isActive: activate,
-                    selectedChannel: activate ? data.channel || "—" : undefined,
-                  }
-                : s
-            )
-          );
-        }
+        // Refresh from server to get definitive state
+        await fetchStations();
       } catch (e: any) {
-        // Revert on network error
-        setStations((prev) =>
-          prev.map((s) =>
-            s.id === stationId
-              ? { ...s, isActive: !activate, selectedChannel: undefined }
-              : s
-          )
-        );
         alert(`Error: ${e?.message || "Could not reach server"}`);
       } finally {
         setActivating(null);
@@ -141,6 +106,10 @@ export default function ProviderManager() {
     });
   }, [stations, filterChile, searchTerm]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterChile, showInactive]);
+
   // Filter stations for the table
   const tableStations = useMemo(() => {
     return stations.filter((s) => {
@@ -153,6 +122,13 @@ export default function ProviderManager() {
       return true;
     });
   }, [stations, filterChile, searchTerm, showInactive]);
+
+  const totalPages = Math.max(1, Math.ceil(tableStations.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedStations = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return tableStations.slice(start, start + PAGE_SIZE);
+  }, [tableStations, safePage]);
 
   const activeCount = stations.filter((s) => s.isActive).length;
   const availableCount = stations.filter((s) => s.hasAvailableChannel).length;
@@ -285,7 +261,7 @@ export default function ProviderManager() {
                     </td>
                   </tr>
                 )}
-                {tableStations.map((s) => (
+                {pagedStations.map((s) => (
                   <tr
                     key={s.id}
                     className={`transition-colors ${
@@ -338,8 +314,31 @@ export default function ProviderManager() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 text-[10px] text-gray-500">
-            {tableStations.length} de {stations.length} estaciones | {activeCount} activas | {availableCount} disponibles
+          <div className="px-4 py-2 bg-gray-800 border-t border-gray-700 flex items-center justify-between text-[10px] text-gray-500">
+            <span>
+              {tableStations.length} de {stations.length} estaciones | {activeCount} activas | {availableCount} disponibles
+            </span>
+            {tableStations.length > PAGE_SIZE && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-600"
+                >
+                  Anterior
+                </button>
+                <span className="text-gray-400">
+                  Página {safePage} de {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-600"
+                >
+                  Siguiente
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
