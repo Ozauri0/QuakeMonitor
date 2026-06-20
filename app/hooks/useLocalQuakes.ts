@@ -31,7 +31,7 @@ export function useLocalQuakes() {
 
     async function loadHistory() {
       try {
-        const res = await fetch("/api/quakes/history?hours=2");
+        const res = await fetch("/api/quakes/history?limit=30");
         if (!res.ok) return;
         const quakes: (QuakeEvent & { updatedAt?: number })[] = await res.json();
         if (cancelled || quakes.length === 0) return;
@@ -218,9 +218,14 @@ export function useLocalQuakes() {
     (_, i) => i !== state.focusedLiveIndex
   );
 
+  // Combined list: live + archived, sorted by time descending, capped at 30
+  const recentQuakes = [...state.live, ...state.archived]
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 30);
+
   return {
     live: state.live,
-    archived: state.archived,
+    archived: recentQuakes,
     focusedLiveQuake,
     secondaryLiveQuakes,
     connected,

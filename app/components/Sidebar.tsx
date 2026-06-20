@@ -147,7 +147,7 @@ export default function Sidebar({
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {displayArchived.length === 0 && (
               <p className="text-gray-500 text-sm text-center mt-8">
-                No hay sismos archivados...
+                No hay sismos recientes...
               </p>
             )}
             {displayArchived.map((quake) => {
@@ -211,8 +211,8 @@ export default function Sidebar({
 
           <div className="p-3 border-t border-gray-800 text-xs text-gray-600 text-center">
             {archivedTotal > displayArchived.length
-              ? `${displayArchived.length} de ${archivedTotal} eventos archivados`
-              : `${archivedTotal} eventos archivados`}
+              ? `${displayArchived.length} de ${archivedTotal} sismos recientes`
+              : `${archivedTotal} sismos recientes`}
           </div>
         </aside>
       )}

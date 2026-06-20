@@ -96,14 +96,18 @@ export async function upsertQuake(quake: {
 }
 
 // Fetch recent quakes (last N hours), sorted by time descending
-export async function getRecentQuakes(hours: number = 2): Promise<any[]> {
+export async function getRecentQuakes(hours?: number, limit: number = 30): Promise<any[]> {
   try {
     const col = await getQuakesCollection();
-    const cutoff = Date.now() - hours * 60 * 60 * 1000;
+    const query: any = {};
+    if (hours && hours > 0) {
+      const cutoff = Date.now() - hours * 60 * 60 * 1000;
+      query.time = { $gte: cutoff };
+    }
     const docs = await col
-      .find({ time: { $gte: cutoff } })
+      .find(query)
       .sort({ time: -1 })
-      .limit(200)
+      .limit(limit)
       .toArray();
 
     return docs.map((doc) => ({
