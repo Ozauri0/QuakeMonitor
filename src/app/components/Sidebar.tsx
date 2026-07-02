@@ -46,15 +46,24 @@ export default function Sidebar({
   onToggleArchived,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
-  const { settings } = useSettings();
+  const { pending } = useSettings();
 
   const SIDEBAR_MAX_ARCHIVED = 30;
   const displayArchived = archived.slice(0, SIDEBAR_MAX_ARCHIVED);
 
   function getMagColorClass(mag: number) {
-    if (mag >= settings.quakeMagMidMax) return "text-red-400";
-    if (mag >= settings.quakeMagLowMax) return "text-yellow-400";
-    return "text-green-400";
+    // Tailwind classes per pending range (positions match default ranges)
+    const r = pending.quakeColorRanges;
+    const last = r[r.length - 1];
+    if (r.length === 0) return "text-gray-400";
+    for (let i = r.length - 1; i >= 0; i--) {
+      if (mag >= r[i].minMagnitude) {
+        // Map range index to a tailwind color class
+        const palette = ["text-green-400", "text-yellow-400", "text-orange-400", "text-red-400", "text-purple-400"];
+        return palette[Math.min(i, palette.length - 1)] ?? "text-red-400";
+      }
+    }
+    return "text-gray-400";
   }
 
   return (

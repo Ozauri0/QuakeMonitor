@@ -1,11 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useRef, useEffect, useState, useMemo, useCallback, memo } from "react";
 import dynamic from "next/dynamic";
 import { QuakeEvent } from "@/app/types/quake";
 import { Station } from "@/app/types/station";
 import { mesh } from "topojson-client";
-import { useSettings } from "@/app/context/SettingsContext";
+import { useSettings, getQuakeColor } from "@/app/context/SettingsContext";
 import { CHILE_LOCATIONS } from "@/lib/locationLabels";
 import * as THREE from "three";
 
@@ -23,11 +23,11 @@ interface GlobeViewProps {
   showArchived: boolean;
 }
 
-// ── Developer toggles ──
-const SHOW_COUNTRY_BORDERS = true;   // bordes de países (1 solo draw call)
+// -- Developer toggles --
+const SHOW_COUNTRY_BORDERS = true;   // bordes de pa�ses (1 solo draw call)
 const SHOW_ATMOSPHERE = false;        // glow alrededor del globo
-const BORDER_ALTITUDE = 0.002;        // altura de las líneas sobre el globo
-// ────────────────────────
+const BORDER_ALTITUDE = 0.002;        // altura de las l�neas sobre el globo
+// ------------------------
 
 const accLat = (d: any) => d.lat;
 const accLng = (d: any) => d.lng;
@@ -39,7 +39,7 @@ const accColor = (d: any) => d.color;
 const RENDERER_CONFIG = { antialias: false, powerPreference: "high-performance" as const };
 
 function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, autoTrack, stations, showStations, showArchived }: GlobeViewProps) {
-  const { settings } = useSettings();
+  const { pending } = useSettings();
   const globeRef = useRef<any>(null);
   const globeReadyRef = useRef(false);
   const ringPool = useRef<Map<string, any>>(new Map());
@@ -51,9 +51,7 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
   const [borderLine, setBorderLine] = useState<THREE.LineSegments | null>(null);
 
   function getColor(mag: number) {
-    if (mag < settings.quakeMagLowMax) return settings.quakePointColorLow;
-    if (mag < settings.quakeMagMidMax) return settings.quakePointColorMid;
-    return settings.quakePointColorHigh;
+    return getQuakeColor(mag, pending.quakeColorRanges);
   }
 
   // Step 1: Load country borders as a merged MultiLineString
@@ -68,7 +66,7 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
       })
       .then((coords) => {
         if (!coords) return;
-        // Store raw coords — will build geometry once globe is ready
+        // Store raw coords � will build geometry once globe is ready
         buildBorderLine(coords);
       })
       .catch((err) => console.error("Failed to load countries:", err));
@@ -78,7 +76,7 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
   function buildBorderLine(coords: [number, number][][]) {
     const globe = globeRef.current;
     if (!globe) {
-      // Globe not ready yet — retry
+      // Globe not ready yet � retry
       setTimeout(() => buildBorderLine(coords), 200);
       return;
     }
@@ -158,21 +156,21 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     const result: any[] = [];
     for (const q of live) {
       let obj = pool.get(q.id); if (!obj) { obj = {}; pool.set(q.id, obj); }
-      Object.assign(obj, { lat: q.lat, lng: q.lon, maxR: Math.max(0.5, q.mag * 2), propagationSpeed: settings.ringPropagationSpeed, repeatPeriod: settings.ringRepeatPeriod, color: getColor(q.mag) });
+      Object.assign(obj, { lat: q.lat, lng: q.lon, maxR: Math.max(0.5, q.mag * 2), propagationSpeed: pending.ringPropagationSpeed, repeatPeriod: pending.ringRepeatPeriod, color: getColor(q.mag) });
       result.push(obj);
     }
     if (replayingId) {
       const r = archivedAll.find((q) => q.id === replayingId);
       if (r && !result.find((x) => x === pool.get(r.id))) {
         let obj = pool.get(r.id); if (!obj) { obj = {}; pool.set(r.id, obj); }
-        Object.assign(obj, { lat: r.lat, lng: r.lon, maxR: Math.max(0.5, r.mag * 2), propagationSpeed: settings.ringPropagationSpeed, repeatPeriod: settings.ringRepeatPeriod, color: getColor(r.mag) });
+        Object.assign(obj, { lat: r.lat, lng: r.lon, maxR: Math.max(0.5, r.mag * 2), propagationSpeed: pending.ringPropagationSpeed, repeatPeriod: pending.ringRepeatPeriod, color: getColor(r.mag) });
         result.push(obj);
       }
     }
     const ids = new Set(live.map((q) => q.id)); if (replayingId) ids.add(replayingId);
     for (const id of pool.keys()) if (!ids.has(id)) pool.delete(id);
     return result;
-  }, [live, archivedAll, replayingId, settings]);
+  }, [live, archivedAll, replayingId, pending]);
 
   const pointsData = useMemo(() => {
     const pool = pointPool.current;
@@ -180,21 +178,21 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     const result: any[] = [];
     for (const q of src) {
       let obj = pool.get(q.id); if (!obj) { obj = {}; pool.set(q.id, obj); }
-      Object.assign(obj, { lat: q.lat, lng: q.lon, size: Math.max(0.2, q.mag * settings.quakePointSizeBase), color: getColor(q.mag) });
+      Object.assign(obj, { lat: q.lat, lng: q.lon, size: Math.max(0.2, q.mag * pending.quakePointSizeBase), color: getColor(q.mag) });
       result.push(obj);
     }
     if (replayingId) {
       const r = archivedAll.find((q) => q.id === replayingId);
       if (r && !result.find((x) => x === pool.get(r.id))) {
         let obj = pool.get(r.id); if (!obj) { obj = {}; pool.set(r.id, obj); }
-        Object.assign(obj, { lat: r.lat, lng: r.lon, size: Math.max(0.2, r.mag * settings.quakePointSizeBase), color: getColor(r.mag) });
+        Object.assign(obj, { lat: r.lat, lng: r.lon, size: Math.max(0.2, r.mag * pending.quakePointSizeBase), color: getColor(r.mag) });
         result.push(obj);
       }
     }
     const ids = new Set(src.map((q) => q.id)); if (replayingId) ids.add(replayingId);
     for (const id of pool.keys()) if (!ids.has(id)) pool.delete(id);
     return result;
-  }, [live, archived, archivedAll, showArchived, replayingId, settings]);
+  }, [live, archived, archivedAll, showArchived, replayingId, pending]);
 
   const htmlElementsData = useMemo(() => {
     const pool = htmlLabelPool.current;
@@ -210,13 +208,13 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     for (const loc of CHILE_LOCATIONS) {
       const key = `loc-${loc.name}`;
       let obj = pool.get(key); if (!obj) { obj = {}; pool.set(key, obj); }
-      Object.assign(obj, { lat: loc.lat, lng: loc.lng, altitude: settings.labelAltitude, name: loc.name, type: loc.type });
+      Object.assign(obj, { lat: loc.lat, lng: loc.lng, altitude: pending.labelAltitude, name: loc.name, type: loc.type });
       result.push(obj);
     }
     const ids = new Set([...(showStations ? stations.map((s) => `st-${s.id}`) : []), ...CHILE_LOCATIONS.map((l) => `loc-${l.name}`)]);
     for (const id of pool.keys()) if (!ids.has(id)) pool.delete(id);
     return result;
-  }, [stations, showStations, settings.labelAltitude]);
+  }, [stations, showStations, pending.labelAltitude]);
 
   const htmlElement = useCallback((d: any) => {
     const el = document.createElement("div");
@@ -242,7 +240,7 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
 
     if (d.type === "station") {
       wrapper.style.top = "0";
-      const scale = settings.stationPointSize / 0.15;
+      const scale = pending.stationPointSize / 0.15;
       const halfBase = Math.round(4 * scale);
       const height = Math.round(7 * scale);
       const triangle = document.createElement("div");
@@ -250,12 +248,12 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
       triangle.style.height = "0";
       triangle.style.borderLeft = `${halfBase}px solid transparent`;
       triangle.style.borderRight = `${halfBase}px solid transparent`;
-      triangle.style.borderBottom = `${height}px solid ${settings.stationColorActive}`;
+      triangle.style.borderBottom = `${height}px solid ${pending.stationColorActive}`;
       triangle.style.marginTop = `-${height}px`;
       wrapper.appendChild(triangle);
       const name = document.createElement("div");
       name.textContent = d.name;
-      Object.assign(name.style, { fontFamily: "system-ui, sans-serif", fontSize: "9px", fontWeight: "500", color: settings.stationColorActive, textShadow: "0 1px 3px rgba(0,0,0,0.9)", whiteSpace: "nowrap", letterSpacing: "0.01em", marginTop: "1px" });
+      Object.assign(name.style, { fontFamily: "system-ui, sans-serif", fontSize: "9px", fontWeight: "500", color: pending.stationColorActive, textShadow: "0 1px 3px rgba(0,0,0,0.9)", whiteSpace: "nowrap", letterSpacing: "0.01em", marginTop: "1px" });
       wrapper.appendChild(name);
     } else if (d.type === "region") {
       wrapper.style.top = "50%";
@@ -274,7 +272,7 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     }
     el.appendChild(wrapper);
     return el;
-  }, [settings.stationColorActive, settings.stationPointSize]);
+  }, [pending.stationColorActive, pending.stationPointSize]);
 
   const htmlElementVisibilityModifier = useCallback((el: HTMLElement, isVisible: boolean) => {
     if (!isVisible) {
@@ -300,7 +298,7 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     el.style.opacity = String(opacity);
   }, []);
 
-  // Custom layer: 1 data item → 1 THREE.LineSegments with ALL borders
+  // Custom layer: 1 data item ? 1 THREE.LineSegments with ALL borders
   const customLayerData = useMemo(() => {
     if (!borderLine) return [];
     return [{}];
@@ -317,8 +315,8 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
         bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
         backgroundColor="rgba(0,0,0,0)"
-        atmosphereColor={settings.atmosphereColor}
-        atmosphereAltitude={settings.atmosphereAltitude}
+        atmosphereColor={pending.atmosphereColor}
+        atmosphereAltitude={pending.atmosphereAltitude}
         showAtmosphere={SHOW_ATMOSPHERE}
         rendererConfig={RENDERER_CONFIG}
         onGlobeReady={handleGlobeReady}
@@ -328,9 +326,9 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
         ringMaxRadius={accMaxR}
         ringPropagationSpeed={accPropagation}
         ringRepeatPeriod={accRepeat}
-        ringAltitude={settings.ringAltitude}
+        ringAltitude={pending.ringAltitude}
         pointsData={pointsData}
-        pointAltitude={settings.pointAltitude}
+        pointAltitude={pending.pointAltitude}
         pointRadius={accSize}
         pointColor={accColor}
         htmlElementsData={htmlElementsData}

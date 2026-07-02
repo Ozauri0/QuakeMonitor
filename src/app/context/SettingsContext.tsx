@@ -2,12 +2,15 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 
+export interface MagnitudeRange {
+  id: string;
+  label: string;
+  minMagnitude: number;
+  color: string;
+}
+
 export interface GlobeSettings {
-  quakePointColorLow: string;
-  quakePointColorMid: string;
-  quakePointColorHigh: string;
-  quakeMagLowMax: number;
-  quakeMagMidMax: number;
+  quakeColorRanges: MagnitudeRange[];
   stationColorActive: string;
   stationColorInactive: string;
   ringAltitude: number;
@@ -27,12 +30,12 @@ export interface GlobeSettings {
 
 const STORAGE_KEY = "quakemonitor-settings";
 
+function makeId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
 export const defaultSettings: GlobeSettings = {
-  quakePointColorLow: "rgba(0, 255, 0, 0.6)",
-  quakePointColorMid: "rgba(255, 255, 0, 0.6)",
-  quakePointColorHigh: "rgba(255, 0, 0, 0.6)",
-  quakeMagLowMax: 3,
-  quakeMagMidMax: 5,
+  quakeColorRanges: [],
   stationColorActive: "rgba(0, 200, 255, 0.7)",
   stationColorInactive: "rgba(100, 100, 100, 0.4)",
   ringAltitude: 0.03,
@@ -50,14 +53,40 @@ export const defaultSettings: GlobeSettings = {
   globeBackgroundColor: "rgba(0,0,0,0)",
 };
 
+interface LegacySettings {
+  quakePointColorLow?: string;
+  quakePointColorMid?: string;
+  quakePointColorHigh?: string;
+  quakeMagLowMax?: number;
+  quakeMagMidMax?: number;
+}
+
+function migrateFromLegacy(stored: any): GlobeSettings {
+  // If the new field is present, use it
+  if (Array.isArray(stored?.quakeColorRanges)) {
+    return { ...defaultSettings, ...stored };
+  }
+  // Otherwise convert from old shape
+  const legacy: LegacySettings = stored ?? {};
+  const ranges: MagnitudeRange[] = [
+    { id: makeId(), label: "Bajo",  minMagnitude: 0, color: legacy.quakePointColorLow  ?? defaultSettings.quakeColorRanges[0].color },
+    { id: makeId(), label: "Medio", minMagnitude: legacy.quakeMagLowMax ?? 3, color: legacy.quakePointColorMid  ?? defaultSettings.quakeColorRanges[1].color },
+    { id: makeId(), label: "Alto",  minMagnitude: legacy.quakeMagMidMax ?? 5, color: legacy.quakePointColorHigh ?? defaultSettings.quakeColorRanges[3].color },
+  ];
+  return {
+    ...defaultSettings,
+    ...stored,
+    quakeColorRanges: ranges,
+  };
+}
+
 function loadSettings(): GlobeSettings {
   if (typeof window === "undefined") return defaultSettings;
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return defaultSettings;
     const parsed = JSON.parse(stored);
-    // Merge with defaults so new fields are always present
-    return { ...defaultSettings, ...parsed };
+    return migrateFromLegacy(parsed);
   } catch {
     return defaultSettings;
   }
@@ -74,37 +103,81 @@ function saveSettings(settings: GlobeSettings) {
 
 interface SettingsContextType {
   settings: GlobeSettings;
-  updateSettings: (partial: Partial<GlobeSettings>) => void;
+  pending: GlobeSettings;
+  hasPending: boolean;
+  updatePending: (partial: Partial<GlobeSettings>) => void;
+  apply: () => void;
+  discard: () => void;
   resetSettings: () => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
 
+function diffCount(a: GlobeSettings, b: GlobeSettings): number {
+  if (a === b) return 0;
+  let count = 0;
+  const keys: (keyof GlobeSettings)[] = [
+    "stationColorActive", "stationColorInactive", "ringAltitude", "pointAltitude",
+    "labelAltitude", "ringPropagationSpeed", "ringRepeatPeriod", "stationPointSize",
+    "quakePointSizeBase", "polygonStrokeColor", "polygonSideColor", "polygonCapColor",
+    "atmosphereColor", "atmosphereAltitude", "globeBackgroundColor",
+  ];
+  for (const k of keys) {
+    if (a[k] !== b[k]) count++;
+  }
+  // Range array deep check
+  const aR = a.quakeColorRanges;
+  const bR = b.quakeColorRanges;
+  if (aR.length !== bR.length) {
+    count += Math.abs(aR.length - bR.length);
+  } else {
+    for (let i = 0; i < aR.length; i++) {
+      if (aR[i].id !== bR[i].id) count++;
+      if (aR[i].label !== bR[i].label) count++;
+      if (aR[i].minMagnitude !== bR[i].minMagnitude) count++;
+      if (aR[i].color !== bR[i].color) count++;
+    }
+  }
+  return count;
+}
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<GlobeSettings>(defaultSettings);
+  const [pending, setPending] = useState<GlobeSettings>(defaultSettings);
   const [loaded, setLoaded] = useState(false);
 
-  // Load from localStorage on mount (client-only)
   useEffect(() => {
-    setSettings(loadSettings());
+    const loaded = loadSettings();
+    setSettings(loaded);
+    setPending(loaded);
     setLoaded(true);
   }, []);
 
-  // Persist to localStorage on every change (skip initial render before load)
   useEffect(() => {
     if (loaded) saveSettings(settings);
   }, [settings, loaded]);
 
-  const updateSettings = useCallback((partial: Partial<GlobeSettings>) => {
-    setSettings((prev) => ({ ...prev, ...partial }));
+  const updatePending = useCallback((partial: Partial<GlobeSettings>) => {
+    setPending((prev) => ({ ...prev, ...partial }));
   }, []);
+
+  const apply = useCallback(() => {
+    setSettings(pending);
+  }, [pending]);
+
+  const discard = useCallback(() => {
+    setPending(settings);
+  }, [settings]);
 
   const resetSettings = useCallback(() => {
     setSettings(defaultSettings);
+    setPending(defaultSettings);
   }, []);
 
+  const hasPending = diffCount(pending, settings) > 0;
+
   return (
-    <SettingsContext.Provider value={{ settings, updateSettings, resetSettings }}>
+    <SettingsContext.Provider value={{ settings, pending, hasPending, updatePending, apply, discard, resetSettings }}>
       {children}
     </SettingsContext.Provider>
   );
@@ -114,4 +187,26 @@ export function useSettings() {
   const ctx = useContext(SettingsContext);
   if (!ctx) throw new Error("useSettings must be inside SettingsProvider");
   return ctx;
+}
+
+/**
+ * Resolve the color for a quake of given magnitude using the current pending ranges.
+ * (Used by GlobeView / Sidebar — they read from the same `useSettings().pending`.)
+ */
+export function getQuakeColor(magnitude: number, ranges: MagnitudeRange[]): string {
+  if (!ranges || ranges.length === 0) {
+    return "rgba(255, 255, 255, 0.6)"; // neutral fallback when user hasn't defined any
+  }
+  // Walk ranges in order; first range whose minMagnitude <= mag wins.
+  // (The last range acts as the open-ended top tier.)
+  const sorted = [...ranges].sort((a, b) => a.minMagnitude - b.minMagnitude);
+  let chosen = sorted[sorted.length - 1].color;
+  for (const r of sorted) {
+    if (magnitude >= r.minMagnitude) {
+      chosen = r.color;
+    } else {
+      break;
+    }
+  }
+  return chosen;
 }
