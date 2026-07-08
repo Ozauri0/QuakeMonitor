@@ -46,6 +46,48 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
   const pointPool = useRef<Map<string, any>>(new Map());
   const htmlLabelPool = useRef<Map<string, any>>(new Map());
   const lastAltRef = useRef(1);
+  const cameraRef = useRef({ lat: -35, lng: -70, altitude: 0.8 });
+  const lastFilteredRef = useRef({ lat: -35, lng: -70, altitude: 0.8 });
+  const [visibleCenter, setVisibleCenter] = useState({ lat: -35, lng: -70, altitude: 0.8 });
+  const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stationDimsRef = useRef({ halfBase: 4, height: 7 });
+
+  function distDeg(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const toRad = Math.PI / 180;
+    const dLat = (lat2 - lat1) * toRad;
+    const dLng = (lng2 - lng1) * toRad;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLng / 2) ** 2;
+    return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) / toRad;
+  }
+
+  const handleZoom = useCallback((pov: { lat: number; lng: number; altitude: number }) => {
+    lastAltRef.current = pov.altitude;
+    cameraRef.current = { lat: pov.lat, lng: pov.lng, altitude: pov.altitude };
+    const prev = lastFilteredRef.current;
+    const dLat = Math.abs(pov.lat - prev.lat);
+    const dLng = Math.abs(pov.lng - prev.lng);
+    const dAlt = Math.abs(pov.altitude - prev.altitude);
+    if (dLat < 2 && dLng < 2 && dAlt < 0.12) return;
+    lastFilteredRef.current = { lat: pov.lat, lng: pov.lng, altitude: pov.altitude };
+    if (!throttleRef.current) {
+      throttleRef.current = setTimeout(() => {
+        throttleRef.current = null;
+        setVisibleCenter({ ...cameraRef.current });
+      }, 300);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => { if (throttleRef.current) clearTimeout(throttleRef.current); };
+  }, []);
+
+  useEffect(() => {
+    const scale = pending.stationPointSize / 0.15;
+    stationDimsRef.current = {
+      halfBase: Math.round(4 * scale),
+      height: Math.round(7 * scale),
+    };
+  }, [pending.stationPointSize]);
 
   // Country borders rendered as a single THREE.LineSegments (1 draw call total)
   const [borderLine, setBorderLine] = useState<THREE.LineSegments | null>(null);
@@ -197,11 +239,16 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
   const htmlElementsData = useMemo(() => {
     const pool = htmlLabelPool.current;
     const result: any[] = [];
-    if (showStations) {
+    const stIds: string[] = [];
+    if (showStations && visibleCenter.altitude <= 0.5) {
+      const { lat: camLat, lng: camLng, altitude: camAlt } = visibleCenter;
+      const visibleRadiusDeg = camAlt * 40;
       for (const s of stations) {
+        if (distDeg(camLat, camLng, s.lat, s.lon) > visibleRadiusDeg) continue;
         const key = `st-${s.id}`;
+        stIds.push(key);
         let obj = pool.get(key); if (!obj) { obj = {}; pool.set(key, obj); }
-        Object.assign(obj, { lat: s.lat, lng: s.lon, altitude: 0.001, name: s.name, type: "station" });
+        Object.assign(obj, { lat: s.lat, lng: s.lon, altitude: 0.001, name: s.name, type: "station", active: s.active });
         result.push(obj);
       }
     }
@@ -211,10 +258,10 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
       Object.assign(obj, { lat: loc.lat, lng: loc.lng, altitude: pending.labelAltitude, name: loc.name, type: loc.type });
       result.push(obj);
     }
-    const ids = new Set([...(showStations ? stations.map((s) => `st-${s.id}`) : []), ...CHILE_LOCATIONS.map((l) => `loc-${l.name}`)]);
+    const ids = new Set([...stIds, ...CHILE_LOCATIONS.map((l) => `loc-${l.name}`)]);
     for (const id of pool.keys()) if (!ids.has(id)) pool.delete(id);
     return result;
-  }, [stations, showStations, pending.labelAltitude]);
+  }, [stations, showStations, pending.labelAltitude, visibleCenter]);
 
   const htmlElement = useCallback((d: any) => {
     const el = document.createElement("div");
@@ -240,20 +287,19 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
 
     if (d.type === "station") {
       wrapper.style.top = "0";
-      const scale = pending.stationPointSize / 0.15;
-      const halfBase = Math.round(4 * scale);
-      const height = Math.round(7 * scale);
+      const stColor = d.active ? pending.stationColorActive : pending.stationColorInactive;
+      const { halfBase, height } = stationDimsRef.current;
       const triangle = document.createElement("div");
       triangle.style.width = "0";
       triangle.style.height = "0";
       triangle.style.borderLeft = `${halfBase}px solid transparent`;
       triangle.style.borderRight = `${halfBase}px solid transparent`;
-      triangle.style.borderBottom = `${height}px solid ${pending.stationColorActive}`;
+      triangle.style.borderBottom = `${height}px solid ${stColor}`;
       triangle.style.marginTop = `-${height}px`;
       wrapper.appendChild(triangle);
       const name = document.createElement("div");
       name.textContent = d.name;
-      Object.assign(name.style, { fontFamily: "system-ui, sans-serif", fontSize: "9px", fontWeight: "500", color: pending.stationColorActive, textShadow: "0 1px 3px rgba(0,0,0,0.9)", whiteSpace: "nowrap", letterSpacing: "0.01em", marginTop: "1px" });
+      Object.assign(name.style, { fontFamily: "system-ui, sans-serif", fontSize: "9px", fontWeight: "500", color: stColor, textShadow: "0 1px 3px rgba(0,0,0,0.9)", whiteSpace: "nowrap", letterSpacing: "0.01em", marginTop: "1px" });
       wrapper.appendChild(name);
     } else if (d.type === "region") {
       wrapper.style.top = "50%";
@@ -272,7 +318,7 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     }
     el.appendChild(wrapper);
     return el;
-  }, [pending.stationColorActive, pending.stationPointSize]);
+  }, [pending.stationColorActive, pending.stationColorInactive]);
 
   const htmlElementVisibilityModifier = useCallback((el: HTMLElement, isVisible: boolean) => {
     if (!isVisible) {
@@ -292,8 +338,8 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
       if (alt > 0.8) opacity = 0;
       else if (alt > 0.5) opacity = Math.max(0, (0.8 - alt) / 0.3);
     } else if (type === "station") {
-      if (alt > 1.5) opacity = 0;
-      else if (alt > 1.2) opacity = Math.max(0, (1.5 - alt) / 0.3);
+      if (alt > 0.5) opacity = 0;
+      else if (alt > 0.35) opacity = Math.max(0, (0.5 - alt) / 0.15);
     }
     el.style.opacity = String(opacity);
   }, []);
@@ -320,7 +366,7 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
         showAtmosphere={SHOW_ATMOSPHERE}
         rendererConfig={RENDERER_CONFIG}
         onGlobeReady={handleGlobeReady}
-        onZoom={(pov) => { lastAltRef.current = pov.altitude; }}
+        onZoom={handleZoom}
         ringsData={ringsData}
         ringColor={accColor}
         ringMaxRadius={accMaxR}
