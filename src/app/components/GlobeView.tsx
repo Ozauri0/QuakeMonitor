@@ -240,9 +240,9 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     const pool = htmlLabelPool.current;
     const result: any[] = [];
     const stIds: string[] = [];
-    if (showStations && visibleCenter.altitude <= 0.5) {
+    if (showStations && visibleCenter.altitude <= 0.6) {
       const { lat: camLat, lng: camLng, altitude: camAlt } = visibleCenter;
-      const visibleRadiusDeg = camAlt * 40;
+      const visibleRadiusDeg = camAlt * 50;
       for (const s of stations) {
         if (distDeg(camLat, camLng, s.lat, s.lon) > visibleRadiusDeg) continue;
         const key = `st-${s.id}`;
@@ -265,55 +265,36 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
 
   const htmlElement = useCallback((d: any) => {
     const el = document.createElement("div");
-    el.dataset.type = d.type;
-    el.dataset.lat = String(d.lat);
-    el.dataset.lng = String(d.lng);
-    el.style.pointerEvents = "none";
-    el.style.userSelect = "none";
-    el.style.transition = "opacity 200ms ease";
-    el.style.lineHeight = "1";
-    el.style.position = "relative";
-    el.style.width = "0";
-    el.style.height = "0";
+    (el as any).__type = d.type;
+    el.style.cssText = "pointer-events:none;user-select:none;transition:opacity 200ms ease;line-height:1;position:relative;width:0;height:0;opacity:0";
 
     const wrapper = document.createElement("div");
-    wrapper.style.position = "absolute";
-    wrapper.style.left = "50%";
-    wrapper.style.transform = "translateX(-50%)";
-    wrapper.style.display = "flex";
-    wrapper.style.flexDirection = "column";
-    wrapper.style.alignItems = "center";
-    wrapper.style.whiteSpace = "nowrap";
+    wrapper.style.cssText = "position:absolute;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap;contain:layout style";
 
     if (d.type === "station") {
       wrapper.style.top = "0";
       const stColor = d.active ? pending.stationColorActive : pending.stationColorInactive;
       const { halfBase, height } = stationDimsRef.current;
       const triangle = document.createElement("div");
-      triangle.style.width = "0";
-      triangle.style.height = "0";
-      triangle.style.borderLeft = `${halfBase}px solid transparent`;
-      triangle.style.borderRight = `${halfBase}px solid transparent`;
-      triangle.style.borderBottom = `${height}px solid ${stColor}`;
-      triangle.style.marginTop = `-${height}px`;
+      triangle.style.cssText = `width:0;height:0;border-left:${halfBase}px solid transparent;border-right:${halfBase}px solid transparent;border-bottom:${height}px solid ${stColor};margin-top:-${height}px`;
       wrapper.appendChild(triangle);
       const name = document.createElement("div");
       name.textContent = d.name;
-      Object.assign(name.style, { fontFamily: "system-ui, sans-serif", fontSize: "9px", fontWeight: "500", color: stColor, textShadow: "0 1px 3px rgba(0,0,0,0.9)", whiteSpace: "nowrap", letterSpacing: "0.01em", marginTop: "1px" });
+      name.style.cssText = `font-family:system-ui,sans-serif;font-size:9px;font-weight:500;color:${stColor};text-shadow:0 1px 3px rgba(0,0,0,0.9);white-space:nowrap;letter-spacing:0.01em;margin-top:1px`;
       wrapper.appendChild(name);
     } else if (d.type === "region") {
       wrapper.style.top = "50%";
       wrapper.style.transform = "translateX(-50%) translateY(-50%)";
       const text = document.createElement("div");
       text.textContent = d.name;
-      Object.assign(text.style, { fontFamily: "system-ui, sans-serif", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(210, 195, 170, 0.9)", textShadow: "0 1px 4px rgba(0,0,0,0.95)", whiteSpace: "nowrap" });
+      text.style.cssText = "font-family:system-ui,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(210,195,170,0.9);text-shadow:0 1px 4px rgba(0,0,0,0.95);white-space:nowrap";
       wrapper.appendChild(text);
     } else {
       wrapper.style.top = "50%";
       wrapper.style.transform = "translateX(-50%) translateY(-50%)";
       const text = document.createElement("div");
       text.textContent = d.name;
-      Object.assign(text.style, { fontFamily: "system-ui, sans-serif", fontSize: "10px", fontWeight: "500", color: "rgba(225, 225, 225, 0.85)", textShadow: "0 1px 3px rgba(0,0,0,0.9)", whiteSpace: "nowrap", letterSpacing: "0.02em" });
+      text.style.cssText = "font-family:system-ui,sans-serif;font-size:10px;font-weight:500;color:rgba(225,225,225,0.85);text-shadow:0 1px 3px rgba(0,0,0,0.9);white-space:nowrap;letter-spacing:0.02em";
       wrapper.appendChild(text);
     }
     el.appendChild(wrapper);
@@ -327,8 +308,8 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     }
     el.style.visibility = "visible";
 
-    const type = el.dataset?.type || "";
-    let alt = lastAltRef.current;
+    const type = (el as any).__type || "";
+    const alt = lastAltRef.current;
 
     let opacity = 1;
     if (type === "region") {
@@ -338,8 +319,8 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
       if (alt > 0.8) opacity = 0;
       else if (alt > 0.5) opacity = Math.max(0, (0.8 - alt) / 0.3);
     } else if (type === "station") {
-      if (alt > 0.5) opacity = 0;
-      else if (alt > 0.35) opacity = Math.max(0, (0.5 - alt) / 0.15);
+      if (alt > 0.6) opacity = 0;
+      else if (alt > 0.5) opacity = Math.max(0, (0.6 - alt) / 0.1);
     }
     el.style.opacity = String(opacity);
   }, []);

@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 export default function FpsCounter() {
   const [visible, setVisible] = useState(false);
+  const [isTouch, setIsTouch] = useState(false);
   const [fps, setFps] = useState(0);
   const framesRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
@@ -26,6 +27,7 @@ export default function FpsCounter() {
 
   useEffect(() => {
     if (!DEV_FPS_ENABLED) return;
+    setIsTouch("ontouchstart" in window || navigator.maxTouchPoints > 0);
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "f" || e.key === "F") {
@@ -47,11 +49,26 @@ export default function FpsCounter() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [visible, tick]);
 
-  if (!DEV_FPS_ENABLED || !visible) return null;
+  if (!DEV_FPS_ENABLED) return null;
 
   return (
-    <div className="fixed bottom-3 left-3 z-[9999] font-mono text-sm text-lime-400 bg-black/70 px-2 py-1 rounded select-none pointer-events-none">
-      {fps} FPS
-    </div>
+    <>
+      {visible && (
+        <div
+          onClick={() => isTouch && setVisible(false)}
+          className={`fixed bottom-3 left-3 z-[9999] font-mono text-sm text-lime-400 bg-black/70 px-2 py-1 rounded select-none ${isTouch ? "pointer-events-auto cursor-pointer" : "pointer-events-none"}`}
+        >
+          {fps} FPS
+        </div>
+      )}
+      {isTouch && !visible && (
+        <button
+          onClick={() => setVisible(true)}
+          className="fixed bottom-3 left-3 z-[9999] text-[10px] text-lime-400/60 bg-black/50 px-1.5 py-0.5 rounded border border-lime-400/20 active:bg-lime-400/10"
+        >
+          FPS
+        </button>
+      )}
+    </>
   );
 }
