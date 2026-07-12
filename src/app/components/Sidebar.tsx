@@ -12,14 +12,16 @@ import {
   Square,
   Eye,
   EyeOff,
+  LoaderCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSettings } from "@/app/context/SettingsContext";
 
 interface SidebarProps {
   archived: QuakeEvent[];
   archivedTotal: number;
   connected: boolean;
+  connecting: boolean;
   autoTrack: boolean;
   onAutoTrackChange: (enabled: boolean) => void;
   onReplayArchived: (id: string) => void;
@@ -35,6 +37,7 @@ export default function Sidebar({
   archived,
   archivedTotal,
   connected,
+  connecting,
   autoTrack,
   onAutoTrackChange,
   onReplayArchived,
@@ -93,7 +96,15 @@ export default function Sidebar({
                 <>
                   <Wifi className="w-4 h-4 text-green-400" />
                   <span className="text-green-400">
-                    Conectado al servidor local
+                    Datos en tiempo real
+                  </span>
+                </>
+              ) : connecting ? (
+                <>
+                  <LoaderCircle className="w-4 h-4 text-yellow-400 animate-spin" />
+                  <span className="text-yellow-400">
+                    Conectando al servidor
+                    <DotsAnimation />
                   </span>
                 </>
               ) : (
@@ -226,5 +237,22 @@ export default function Sidebar({
         </aside>
       )}
     </>
+  );
+}
+
+function DotsAnimation() {
+  const [dots, setDots] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setDots((d) => (d + 1) % 4);
+    }, 400);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <span className="inline-block w-[1.2em] text-left">
+      {".".repeat(dots)}
+    </span>
   );
 }

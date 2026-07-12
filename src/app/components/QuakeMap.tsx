@@ -15,6 +15,7 @@ export default function QuakeMap() {
     focusedLiveQuake,
     secondaryLiveQuakes,
     connected,
+    connecting,
   } = useLocalQuakes();
   const { stations } = useStations();
   const activeStations = useMemo(() => stations.filter((s) => s.active), [stations]);
@@ -75,6 +76,7 @@ export default function QuakeMap() {
           archived={archived}
           archivedTotal={archived.length}
           connected={connected}
+          connecting={connecting}
           autoTrack={autoTrack}
           onAutoTrackChange={setAutoTrack}
           onReplayArchived={setReplayingId}

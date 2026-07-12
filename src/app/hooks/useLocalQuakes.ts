@@ -24,6 +24,7 @@ export function useLocalQuakes() {
     historyLoaded: false,
   });
   const [connected, setConnected] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   // Load historical quakes from MongoDB on mount
   useEffect(() => {
@@ -191,10 +192,17 @@ export function useLocalQuakes() {
 
   // SSE connection
   useEffect(() => {
+    setConnecting(true);
     const eventSource = new EventSource("/api/stream/quakes");
 
-    eventSource.onopen = () => setConnected(true);
-    eventSource.onerror = () => setConnected(false);
+    eventSource.onopen = () => {
+      setConnected(true);
+      setConnecting(false);
+    };
+    eventSource.onerror = () => {
+      setConnected(false);
+      setConnecting(true);
+    };
 
     eventSource.onmessage = (event) => {
       try {
@@ -208,6 +216,7 @@ export function useLocalQuakes() {
     return () => {
       eventSource.close();
       setConnected(false);
+      setConnecting(false);
     };
   }, [processQuake]);
 
@@ -229,5 +238,6 @@ export function useLocalQuakes() {
     focusedLiveQuake,
     secondaryLiveQuakes,
     connected,
+    connecting,
   };
 }

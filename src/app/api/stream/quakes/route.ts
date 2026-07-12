@@ -8,6 +8,15 @@ export async function GET(request: Request) {
     start(controller) {
       let closed = false;
 
+      // Force immediate flush of response headers in production.
+      // Without this, the browser's EventSource never fires the 'open' event
+      // because compressed/buffered responses delay header delivery.
+      try {
+        controller.enqueue(encoder.encode(":ok\n\n"));
+      } catch {
+        return;
+      }
+
       const sendEvent = (quake: QuakeEvent) => {
         if (closed) return;
         try {
@@ -60,6 +69,8 @@ export async function GET(request: Request) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+      "Content-Encoding": "none",
     },
   });
 }

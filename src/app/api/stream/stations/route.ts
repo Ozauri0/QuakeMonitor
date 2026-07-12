@@ -32,6 +32,13 @@ export async function GET(request: Request) {
     async start(controller) {
       let closed = false;
 
+      // Force immediate flush of response headers in production.
+      try {
+        controller.enqueue(encoder.encode(":ok\n\n"));
+      } catch {
+        return;
+      }
+
       const sendEvent = (stations: Station[]) => {
         if (closed) return;
         try {
@@ -89,6 +96,8 @@ export async function GET(request: Request) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+      "Content-Encoding": "none",
     },
   });
 }
