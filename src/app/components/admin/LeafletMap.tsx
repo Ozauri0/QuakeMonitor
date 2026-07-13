@@ -23,21 +23,34 @@ interface LeafletMapProps {
   onToggleStation: (id: string, activate: boolean) => void;
   onHighlightStation: (id: string | null) => void;
   activating: string | null;
+  onBulkActionComplete: () => void;
 }
 
 const ACTIVE_COLOR = "#00e5ff";
 const AVAILABLE_COLOR = "#4ade80";
 const SELECTED_COLOR = "#ffffff";
+const BULK_SELECTED_COLOR = "#fbbf24";
 const SELECTED_WEIGHT = 3;
 const NORMAL_WEIGHT = 1.5;
 
-function LeafletMap({ stations, onToggleStation, onHighlightStation, activating }: LeafletMapProps) {
+function LeafletMap({ stations, onToggleStation, onHighlightStation, activating, onBulkActionComplete }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const canvasRendererRef = useRef<L.Canvas | null>(null);
   const markersRef = useRef<Map<string, L.CircleMarker>>(new Map());
   const initializedRef = useRef(false);
+
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [selectRect, setSelectRect] = useState<{
+    left: number; top: number; width: number; height: number;
+  } | null>(null);
+
+  const selectStartRef = useRef<{ x: number; y: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const stationsMap = useMemo(() => {
     const m = new Map<string, GQStation>();
@@ -46,6 +59,15 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
   }, [stations]);
 
   const selectedStation = selectedStationId ? stationsMap.get(selectedStationId) ?? null : null;
+
+  const bulkStations = useMemo(() => {
+    return Array.from(bulkSelectedIds)
+      .map((id) => stationsMap.get(id))
+      .filter((s): s is GQStation => s != null);
+  }, [bulkSelectedIds, stationsMap]);
+
+  const bulkActiveCount = bulkStations.filter((s) => s.isActive).length;
+  const bulkInactiveCount = bulkStations.length - bulkActiveCount;
 
   // Initialize map once
   useEffect(() => {
@@ -101,14 +123,16 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
 
       const existing = markers.get(s.id);
       const isSelected = selectedStationId === s.id;
+      const isBulkSelected = bulkSelectedIds.has(s.id);
+
+      const baseColor = s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR;
 
       if (existing) {
-        // Update existing marker if properties changed
         const newRadius = s.isActive ? 5 : 4;
-        const newColor = s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR;
-        const newWeight = isSelected ? SELECTED_WEIGHT : NORMAL_WEIGHT;
-        const newFillColor = isSelected ? SELECTED_COLOR : newColor;
-        const newFillOpacity = isSelected ? 1 : 0.7;
+        const newColor = isBulkSelected ? BULK_SELECTED_COLOR : baseColor;
+        const newWeight = isSelected || isBulkSelected ? SELECTED_WEIGHT : NORMAL_WEIGHT;
+        const newFillColor = isSelected ? SELECTED_COLOR : (isBulkSelected ? BULK_SELECTED_COLOR : baseColor);
+        const newFillOpacity = isSelected || isBulkSelected ? 1 : 0.7;
 
         if (
           existing.getLatLng().lat !== s.lat ||
@@ -134,13 +158,12 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
           });
         }
       } else {
-        // Create new marker
         const marker = L.circleMarker([s.lat, s.lon], {
           radius: s.isActive ? 5 : 4,
-          color: s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR,
-          weight: isSelected ? SELECTED_WEIGHT : NORMAL_WEIGHT,
-          fillColor: isSelected ? SELECTED_COLOR : (s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR),
-          fillOpacity: isSelected ? 1 : 0.7,
+          color: isBulkSelected ? BULK_SELECTED_COLOR : baseColor,
+          weight: isSelected || isBulkSelected ? SELECTED_WEIGHT : NORMAL_WEIGHT,
+          fillColor: isSelected ? SELECTED_COLOR : (isBulkSelected ? BULK_SELECTED_COLOR : baseColor),
+          fillOpacity: isSelected || isBulkSelected ? 1 : 0.7,
           renderer,
           interactive: true,
           bubblingMouseEvents: false,
@@ -153,12 +176,26 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
           opacity: 0.9,
         });
 
-        marker.on("click", () => {
-          const mapInst = mapInstanceRef.current;
-          setSelectedStationId((prev) => (prev === s.id ? null : s.id));
-          onHighlightStation(s.id);
-          if (mapInst) {
-            mapInst.setView([s.lat, s.lon], Math.max(mapInst.getZoom(), 6), { animate: true, duration: 0.3 });
+        marker.on("click", (e) => {
+          L.DomEvent.stopPropagation(e);
+
+          if (selectionMode) {
+            setBulkSelectedIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(s.id)) {
+                next.delete(s.id);
+              } else {
+                next.add(s.id);
+              }
+              return next;
+            });
+          } else {
+            const mapInst = mapInstanceRef.current;
+            setSelectedStationId((prev) => (prev === s.id ? null : s.id));
+            onHighlightStation(s.id);
+            if (mapInst) {
+              mapInst.setView([s.lat, s.lon], Math.max(mapInst.getZoom(), 6), { animate: true, duration: 0.3 });
+            }
           }
         });
 
@@ -167,35 +204,15 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
       }
     }
 
-    // Remove stale markers
     for (const [id, marker] of markers) {
       if (!currentIds.has(id)) {
         marker.remove();
         markers.delete(id);
       }
     }
-  }, [stations, selectedStationId, onHighlightStation]);
+  }, [stations, selectedStationId, bulkSelectedIds, selectionMode, onHighlightStation]);
 
-  // Update selected marker style when selection changes
-  useEffect(() => {
-    const markers = markersRef.current;
-    for (const [id, marker] of markers) {
-      const s = stationsMap.get(id);
-      if (!s) continue;
-
-      const isSelected = selectedStationId === id;
-      const color = s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR;
-
-      marker.setStyle({
-        weight: isSelected ? SELECTED_WEIGHT : NORMAL_WEIGHT,
-        fillColor: isSelected ? SELECTED_COLOR : color,
-        fillOpacity: isSelected ? 1 : 0.7,
-        color,
-      });
-    }
-  }, [selectedStationId, stationsMap]);
-
-  // Map click to deselect
+  // Map click to deselect (only when not in selection mode)
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -210,6 +227,109 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
       map.off("click", handleClick);
     };
   }, [onHighlightStation]);
+
+  // Rectangle selection using DOM overlay to avoid Leaflet dragging conflicts
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!selectionMode) return;
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement)?.closest("path, circle")) return;
+
+      const rect = container.getBoundingClientRect();
+      selectStartRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+      setIsSelecting(true);
+      setSelectRect({ left: e.clientX - rect.left, top: e.clientY - rect.top, width: 0, height: 0 });
+      e.stopImmediatePropagation();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isSelecting || !selectStartRef.current) return;
+
+      const rect = container.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
+      const start = selectStartRef.current;
+
+      setSelectRect({
+        left: Math.min(start.x, currentX),
+        top: Math.min(start.y, currentY),
+        width: Math.abs(currentX - start.x),
+        height: Math.abs(currentY - start.y),
+      });
+    };
+
+    // Capture phase: intercept mousedown before Leaflet's drag handler
+    container.addEventListener("mousedown", handleMouseDown, true);
+    window.addEventListener("mousemove", handleMouseMove);
+
+    return () => {
+      container.removeEventListener("mousedown", handleMouseDown, true);
+      window.removeEventListener("mousemove", handleMouseMove);
+    };
+  }, [selectionMode, isSelecting]);
+
+  // Handle mouseup to finalize selection
+  useEffect(() => {
+    if (!isSelecting) return;
+
+    const handleMouseUp = (e: MouseEvent) => {
+      const map = mapInstanceRef.current;
+      const container = containerRef.current;
+      if (!map || !container || !selectStartRef.current) {
+        setIsSelecting(false);
+        setSelectRect(null);
+        selectStartRef.current = null;
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const endX = e.clientX - rect.left;
+      const endY = e.clientY - rect.top;
+      const start = selectStartRef.current;
+
+      const left = Math.min(start.x, endX);
+      const top = Math.min(start.y, endY);
+      const right = Math.max(start.x, endX);
+      const bottom = Math.max(start.y, endY);
+
+      // Convert screen coords to lat/lng
+      const topLeft = map.containerPointToLatLng([left, top]);
+      const bottomRight = map.containerPointToLatLng([right, bottom]);
+      const bounds = L.latLngBounds(topLeft, bottomRight);
+
+      // Find stations inside bounds
+      const insideIds: string[] = [];
+      for (const s of stations) {
+        if (bounds.contains([s.lat, s.lon])) {
+          insideIds.push(s.id);
+        }
+      }
+
+      if (insideIds.length > 0) {
+        const additive = e.shiftKey;
+        setBulkSelectedIds((prev) => {
+          const next = additive ? new Set(prev) : new Set<string>();
+          for (const id of insideIds) {
+            next.add(id);
+          }
+          return next;
+        });
+      }
+
+      setIsSelecting(false);
+      setSelectRect(null);
+      selectStartRef.current = null;
+    };
+
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, [isSelecting, stations]);
 
   // Fit bounds on first load
   useEffect(() => {
@@ -227,9 +347,60 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
     onToggleStation(selectedStation.id, !selectedStation.isActive);
   }, [selectedStation, onToggleStation]);
 
+  const handleBulkAction = useCallback(async (action: "activate" | "deactivate") => {
+    const ids = Array.from(bulkSelectedIds);
+    if (ids.length === 0) return;
+
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/gq-stations/bulk-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stationIds: ids, action }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert(`Errores: ${data.failed} de ${ids.length} fallaron`);
+      }
+      setBulkSelectedIds(new Set());
+      onBulkActionComplete();
+    } catch (e: any) {
+      alert(`Error: ${e?.message || "No se pudo ejecutar la acción"}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [bulkSelectedIds, onBulkActionComplete]);
+
+  const handleClearSelection = useCallback(() => {
+    setBulkSelectedIds(new Set());
+  }, []);
+
+  const handleToggleSelectionMode = useCallback(() => {
+    setSelectionMode((prev) => {
+      if (prev) {
+        // Exiting selection mode - clear bulk selection
+        setBulkSelectedIds(new Set());
+      }
+      return !prev;
+    });
+  }, []);
+
   return (
     <div className="relative w-full h-full">
-      <div ref={mapRef} className="absolute inset-0" />
+      <div ref={(el) => { (mapRef as any).current = el; (containerRef as any).current = el; }} className="absolute inset-0" />
+
+      {/* Selection rectangle (DOM-based, no Leaflet dragging conflicts) */}
+      {selectRect && isSelecting && (
+        <div
+          className="absolute pointer-events-none border border-yellow-400 bg-yellow-400/15 z-[600]"
+          style={{
+            left: selectRect.left,
+            top: selectRect.top,
+            width: selectRect.width,
+            height: selectRect.height,
+          }}
+        />
+      )}
 
       <style>{`
         .station-tooltip {
@@ -247,7 +418,70 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
         }
       `}</style>
 
-      {selectedStation && (
+      {/* Selection mode toggle */}
+      <div className="absolute top-4 right-4 z-[1000] pointer-events-auto">
+        <button
+          onClick={handleToggleSelectionMode}
+          className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all border ${
+            selectionMode
+              ? "bg-yellow-600/80 text-white border-yellow-500 shadow-lg shadow-yellow-500/20"
+              : "bg-gray-900/90 text-gray-300 border-gray-600 hover:bg-gray-800"
+          }`}
+        >
+          {selectionMode ? "✓ Modo selección" : "Selección por región"}
+        </button>
+      </div>
+
+      {/* Selection hint */}
+      {selectionMode && (
+        <div className="absolute top-16 right-4 z-[1000] pointer-events-none">
+          <span className="text-[10px] text-yellow-300/80 bg-gray-900/70 px-2 py-1 rounded">
+            Arrastra para seleccionar &middot; Shift para sumar &middot; Click en estación para toggle
+          </span>
+        </div>
+      )}
+
+      {/* Bulk action bar */}
+      {bulkSelectedIds.size > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-auto">
+          <div className="flex items-center gap-3 bg-gray-900/95 backdrop-blur-md border border-gray-700 rounded-xl px-4 py-3 shadow-2xl">
+            <span className="text-sm text-gray-300 font-medium">
+              {bulkSelectedIds.size} estación{bulkSelectedIds.size !== 1 ? "es" : ""} seleccionada{bulkSelectedIds.size !== 1 ? "s" : ""}
+            </span>
+
+            <span className="text-gray-600">|</span>
+
+            <button
+              onClick={() => handleBulkAction("activate")}
+              disabled={bulkBusy || bulkInactiveCount === 0}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-700/80 text-white hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors border border-green-600"
+            >
+              Activar {bulkInactiveCount > 0 ? `(${bulkInactiveCount})` : "todas"}
+            </button>
+
+            <button
+              onClick={() => handleBulkAction("deactivate")}
+              disabled={bulkBusy || bulkActiveCount === 0}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-700/80 text-white hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors border border-red-600"
+            >
+              Desactivar {bulkActiveCount > 0 ? `(${bulkActiveCount})` : "todas"}
+            </button>
+
+            <span className="text-gray-600">|</span>
+
+            <button
+              onClick={handleClearSelection}
+              disabled={bulkBusy}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            >
+              Limpiar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Single station detail panel (hidden in selection mode) */}
+      {selectedStation && !selectionMode && (
         <div className="absolute top-4 left-4 z-[1000] w-72 bg-gray-900/95 backdrop-blur-md border border-gray-700 rounded-xl shadow-2xl pointer-events-auto">
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">

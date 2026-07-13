@@ -228,6 +228,7 @@ export default function ProviderManager() {
                 onToggleStation={toggleStation}
                 onHighlightStation={setHighlightId}
                 activating={activating}
+                onBulkActionComplete={fetchStations}
               />
             )}
           </div>
