@@ -25,167 +25,17 @@ interface LeafletMapProps {
   activating: string | null;
 }
 
-interface StationCanvasLayer extends L.Layer {
-  setStations(stations: GQStation[]): void;
-  setSelectedId(id: string | null): void;
-  getStationAt(latlng: L.LatLng, radiusPx: number): GQStation | null;
-}
-
 const ACTIVE_COLOR = "#00e5ff";
 const AVAILABLE_COLOR = "#4ade80";
-const SELECTED_STROKE = "#ffffff";
-
-const StationCanvasLayerClass = L.Layer.extend({
-  initialize: function (this: any, options: any) {
-    L.setOptions(this, options);
-    this._stations = [] as GQStation[];
-    this._selectedId = null as string | null;
-    this._rAF = null as number | null;
-    this._canvas = null as HTMLCanvasElement | null;
-    this._ctx = null as CanvasRenderingContext2D | null;
-    this._map = null as L.Map | null;
-  },
-
-  setStations: function (this: any, stations: GQStation[]) {
-    this._stations = stations;
-    this._redraw();
-  },
-
-  setSelectedId: function (this: any, id: string | null) {
-    this._selectedId = id;
-    this._redraw();
-  },
-
-  getStationAt: function (this: any, latlng: L.LatLng, radiusPx: number): GQStation | null {
-    const map = this._map as L.Map | null;
-    if (!map || this._stations.length === 0) return null;
-
-    const click = map.latLngToLayerPoint(latlng);
-    const bounds = map.getBounds().pad(0.15);
-    let nearest: GQStation | null = null;
-    let minD2 = radiusPx * radiusPx;
-
-    for (const s of this._stations) {
-      if (!bounds.contains([s.lat, s.lon])) continue;
-      const p = map.latLngToLayerPoint([s.lat, s.lon]);
-      const dx = p.x - click.x;
-      const dy = p.y - click.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < minD2) {
-        minD2 = d2;
-        nearest = s;
-      }
-    }
-    return nearest;
-  },
-
-  onAdd: function (this: any, map: L.Map) {
-    this._map = map;
-
-    const pane = map.getPane(this.options.pane) || map.createPane(this.options.pane);
-    const canvas = L.DomUtil.create("canvas", "leaflet-layer leaflet-zoom-hide") as HTMLCanvasElement;
-    canvas.style.position = "absolute";
-    canvas.style.top = "0";
-    canvas.style.left = "0";
-    canvas.style.pointerEvents = "none";
-    pane.appendChild(canvas);
-    this._canvas = canvas;
-    this._ctx = canvas.getContext("2d");
-
-    this._updateSize();
-
-    this._onResize = this._updateSize.bind(this);
-    this._onMove = this._redraw.bind(this);
-
-    map.on("resize", this._onResize);
-    map.on("moveend zoomend", this._onMove);
-
-    this._redraw();
-  },
-
-  onRemove: function (this: any, map: L.Map) {
-    map.off("resize", this._onResize);
-    map.off("moveend zoomend", this._onMove);
-    if (this._canvas) {
-      L.DomUtil.remove(this._canvas);
-    }
-    if (this._rAF) {
-      cancelAnimationFrame(this._rAF);
-      this._rAF = null;
-    }
-    this._canvas = null;
-    this._ctx = null;
-    this._map = null;
-  },
-
-  _updateSize: function (this: any) {
-    const map = this._map as L.Map | null;
-    const canvas = this._canvas as HTMLCanvasElement | null;
-    const ctx = this._ctx as CanvasRenderingContext2D | null;
-    if (!map || !canvas || !ctx) return;
-
-    const size = map.getSize();
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = size.x * ratio;
-    canvas.height = size.y * ratio;
-    canvas.style.width = size.x + "px";
-    canvas.style.height = size.y + "px";
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  },
-
-  _redraw: function (this: any) {
-    if (this._rAF) cancelAnimationFrame(this._rAF);
-    this._rAF = requestAnimationFrame(() => this._draw());
-  },
-
-  _draw: function (this: any) {
-    this._rAF = null;
-    const map = this._map as L.Map | null;
-    const canvas = this._canvas as HTMLCanvasElement | null;
-    const ctx = this._ctx as CanvasRenderingContext2D | null;
-    if (!map || !canvas || !ctx) return;
-
-    const size = map.getSize();
-    ctx.clearRect(0, 0, size.x, size.y);
-
-    if (this._stations.length === 0) return;
-
-    const bounds = map.getBounds().pad(0.2);
-    const selectedId = this._selectedId as string | null;
-
-    for (const s of this._stations) {
-      if (!bounds.contains([s.lat, s.lon])) continue;
-
-      const p = map.latLngToLayerPoint([s.lat, s.lon]);
-      const isActive = s.isActive;
-      const radius = isActive ? 4 : 3;
-      const color = isActive ? ACTIVE_COLOR : AVAILABLE_COLOR;
-      const isSelected = selectedId === s.id;
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.7;
-      ctx.fill();
-
-      ctx.globalAlpha = 0.85;
-      ctx.lineWidth = isSelected ? 2.5 : isActive ? 1.5 : 1;
-      ctx.strokeStyle = isSelected ? SELECTED_STROKE : color;
-      ctx.stroke();
-    }
-
-    ctx.globalAlpha = 1;
-  },
-}) as any;
-
-function createStationLayer(): StationCanvasLayer {
-  return new StationCanvasLayerClass({ pane: "overlayPane" }) as StationCanvasLayer;
-}
+const SELECTED_COLOR = "#ffffff";
+const SELECTED_WEIGHT = 3;
+const NORMAL_WEIGHT = 1.5;
 
 function LeafletMap({ stations, onToggleStation, onHighlightStation, activating }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const stationLayerRef = useRef<StationCanvasLayer | null>(null);
+  const canvasRendererRef = useRef<L.Canvas | null>(null);
+  const markersRef = useRef<Map<string, L.CircleMarker>>(new Map());
   const initializedRef = useRef(false);
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
 
@@ -209,92 +59,168 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
       zoomControl: true,
       attributionControl: false,
       worldCopyJump: false,
-      zoomAnimation: false,
-      markerZoomAnimation: false,
-      fadeAnimation: false,
+      preferCanvas: true,
     });
 
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       subdomains: "abcd",
       maxZoom: 19,
       noWrap: true,
-      updateWhenIdle: false,
-      updateWhenZooming: true,
     }).addTo(map);
 
-    const stationLayer = createStationLayer();
-    stationLayer.addTo(map);
-    stationLayerRef.current = stationLayer;
+    const renderer = L.canvas({ padding: 0.5 });
+    renderer.addTo(map);
+    canvasRendererRef.current = renderer;
+
     mapInstanceRef.current = map;
 
-    // Force size recalculation after React paints the container
     setTimeout(() => {
       map.invalidateSize();
     }, 200);
 
     return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current.clear();
       map.remove();
       mapInstanceRef.current = null;
-      stationLayerRef.current = null;
+      canvasRendererRef.current = null;
     };
   }, []);
 
-  const handleMarkerClick = useCallback(
-    (stationId: string, lat: number, lon: number) => {
-      setSelectedStationId((prev) => (prev === stationId ? null : stationId));
-      onHighlightStation(stationId);
-      const map = mapInstanceRef.current;
-      if (map) {
-        map.setView([lat, lon], Math.max(map.getZoom(), 6), { animate: true, duration: 0.3 });
-      }
-    },
-    [onHighlightStation]
-  );
-
-  // Sync stations to canvas layer
-  useEffect(() => {
-    const layer = stationLayerRef.current;
-    if (!layer) return;
-    layer.setStations(stations);
-  }, [stations]);
-
-  // Sync selected station highlight
-  useEffect(() => {
-    const layer = stationLayerRef.current;
-    if (!layer) return;
-    layer.setSelectedId(selectedStationId);
-  }, [selectedStationId]);
-
-  // Fit bounds on first load
+  // Sync markers with stations data
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || stations.length === 0 || initializedRef.current) return;
-    const bounds = L.latLngBounds(stations.map((s) => [s.lat, s.lon]));
-    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 6 });
-    initializedRef.current = true;
-  }, [stations]);
+    const renderer = canvasRendererRef.current;
+    if (!map || !renderer) return;
 
-  // Map click: select nearest station or clear selection
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const layer = stationLayerRef.current;
-    if (!map || !layer) return;
+    const currentIds = new Set<string>();
+    const markers = markersRef.current;
 
-    const handleClick = (e: L.LeafletMouseEvent) => {
-      const station = layer.getStationAt(e.latlng, 10);
-      if (station) {
-        handleMarkerClick(station.id, station.lat, station.lon);
+    for (const s of stations) {
+      currentIds.add(s.id);
+
+      const existing = markers.get(s.id);
+      const isSelected = selectedStationId === s.id;
+
+      if (existing) {
+        // Update existing marker if properties changed
+        const newRadius = s.isActive ? 5 : 4;
+        const newColor = s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR;
+        const newWeight = isSelected ? SELECTED_WEIGHT : NORMAL_WEIGHT;
+        const newFillColor = isSelected ? SELECTED_COLOR : newColor;
+        const newFillOpacity = isSelected ? 1 : 0.7;
+
+        if (
+          existing.getLatLng().lat !== s.lat ||
+          existing.getLatLng().lng !== s.lon
+        ) {
+          existing.setLatLng([s.lat, s.lon]);
+        }
+
+        const opts = existing.options as any;
+        if (
+          opts.radius !== newRadius ||
+          opts.color !== newColor ||
+          opts.weight !== newWeight ||
+          opts.fillColor !== newFillColor ||
+          opts.fillOpacity !== newFillOpacity
+        ) {
+          existing.setStyle({
+            radius: newRadius,
+            color: newColor,
+            weight: newWeight,
+            fillColor: newFillColor,
+            fillOpacity: newFillOpacity,
+          });
+        }
       } else {
-        setSelectedStationId(null);
-        onHighlightStation(null);
+        // Create new marker
+        const marker = L.circleMarker([s.lat, s.lon], {
+          radius: s.isActive ? 5 : 4,
+          color: s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR,
+          weight: isSelected ? SELECTED_WEIGHT : NORMAL_WEIGHT,
+          fillColor: isSelected ? SELECTED_COLOR : (s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR),
+          fillOpacity: isSelected ? 1 : 0.7,
+          renderer,
+          interactive: true,
+          bubblingMouseEvents: false,
+        });
+
+        marker.bindTooltip(`${s.network}.${s.stationCode}`, {
+          direction: "top",
+          offset: [0, -6],
+          className: "station-tooltip",
+          opacity: 0.9,
+        });
+
+        marker.on("click", () => {
+          const mapInst = mapInstanceRef.current;
+          setSelectedStationId((prev) => (prev === s.id ? null : s.id));
+          onHighlightStation(s.id);
+          if (mapInst) {
+            mapInst.setView([s.lat, s.lon], Math.max(mapInst.getZoom(), 6), { animate: true, duration: 0.3 });
+          }
+        });
+
+        marker.addTo(map);
+        markers.set(s.id, marker);
       }
+    }
+
+    // Remove stale markers
+    for (const [id, marker] of markers) {
+      if (!currentIds.has(id)) {
+        marker.remove();
+        markers.delete(id);
+      }
+    }
+  }, [stations, selectedStationId, onHighlightStation]);
+
+  // Update selected marker style when selection changes
+  useEffect(() => {
+    const markers = markersRef.current;
+    for (const [id, marker] of markers) {
+      const s = stationsMap.get(id);
+      if (!s) continue;
+
+      const isSelected = selectedStationId === id;
+      const color = s.isActive ? ACTIVE_COLOR : AVAILABLE_COLOR;
+
+      marker.setStyle({
+        weight: isSelected ? SELECTED_WEIGHT : NORMAL_WEIGHT,
+        fillColor: isSelected ? SELECTED_COLOR : color,
+        fillOpacity: isSelected ? 1 : 0.7,
+        color,
+      });
+    }
+  }, [selectedStationId, stationsMap]);
+
+  // Map click to deselect
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const handleClick = () => {
+      setSelectedStationId(null);
+      onHighlightStation(null);
     };
 
     map.on("click", handleClick);
     return () => {
       map.off("click", handleClick);
     };
-  }, [handleMarkerClick, onHighlightStation]);
+  }, [onHighlightStation]);
+
+  // Fit bounds on first load
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || stations.length === 0 || initializedRef.current) return;
+    const bounds = L.latLngBounds(stations.map((s) => [s.lat, s.lon]));
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 6 });
+    }
+    initializedRef.current = true;
+  }, [stations]);
 
   const handleToggle = useCallback(() => {
     if (!selectedStation) return;
@@ -304,6 +230,22 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
   return (
     <div className="relative w-full h-full">
       <div ref={mapRef} className="absolute inset-0" />
+
+      <style>{`
+        .station-tooltip {
+          background: rgba(17, 24, 39, 0.95) !important;
+          border: 1px solid rgba(75, 85, 99, 0.6) !important;
+          border-radius: 4px !important;
+          color: #d1d5db !important;
+          font-size: 10px !important;
+          font-family: monospace !important;
+          padding: 2px 6px !important;
+          box-shadow: none !important;
+        }
+        .station-tooltip::before {
+          border-top-color: rgba(17, 24, 39, 0.95) !important;
+        }
+      `}</style>
 
       {selectedStation && (
         <div className="absolute top-4 left-4 z-[1000] w-72 bg-gray-900/95 backdrop-blur-md border border-gray-700 rounded-xl shadow-2xl pointer-events-auto">
@@ -316,7 +258,7 @@ function LeafletMap({ stations, onToggleStation, onHighlightStation, activating 
                 <p className="text-[10px] text-gray-400 mt-0.5">{selectedStation.id}</p>
               </div>
               <button
-                onClick={() => setSelectedStationId(null)}
+                onClick={() => { setSelectedStationId(null); onHighlightStation(null); }}
                 className="text-gray-500 hover:text-white text-lg leading-none"
               >
                 ×
