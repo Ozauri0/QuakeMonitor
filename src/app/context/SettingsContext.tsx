@@ -34,8 +34,16 @@ function makeId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+const DEFAULT_LOW_COLOR = "rgba(74, 222, 128, 0.7)";
+const DEFAULT_MID_COLOR = "rgba(250, 204, 21, 0.7)";
+const DEFAULT_HIGH_COLOR = "rgba(248, 113, 113, 0.7)";
+
 export const defaultSettings: GlobeSettings = {
-  quakeColorRanges: [],
+  quakeColorRanges: [
+    { id: "default-low", label: "Bajo", minMagnitude: 0, color: DEFAULT_LOW_COLOR },
+    { id: "default-mid", label: "Medio", minMagnitude: 3, color: DEFAULT_MID_COLOR },
+    { id: "default-high", label: "Alto", minMagnitude: 5, color: DEFAULT_HIGH_COLOR },
+  ],
   stationColorActive: "rgba(0, 200, 255, 0.7)",
   stationColorInactive: "rgba(100, 100, 100, 0.4)",
   ringAltitude: 0.03,
@@ -62,16 +70,15 @@ interface LegacySettings {
 }
 
 function migrateFromLegacy(stored: any): GlobeSettings {
-  // If the new field is present, use it
-  if (Array.isArray(stored?.quakeColorRanges)) {
+  if (Array.isArray(stored?.quakeColorRanges) && stored.quakeColorRanges.length > 0) {
     return { ...defaultSettings, ...stored };
   }
-  // Otherwise convert from old shape
+  // Empty or missing ranges — use defaults
   const legacy: LegacySettings = stored ?? {};
   const ranges: MagnitudeRange[] = [
     { id: makeId(), label: "Bajo",  minMagnitude: 0, color: legacy.quakePointColorLow  ?? defaultSettings.quakeColorRanges[0].color },
     { id: makeId(), label: "Medio", minMagnitude: legacy.quakeMagLowMax ?? 3, color: legacy.quakePointColorMid  ?? defaultSettings.quakeColorRanges[1].color },
-    { id: makeId(), label: "Alto",  minMagnitude: legacy.quakeMagMidMax ?? 5, color: legacy.quakePointColorHigh ?? defaultSettings.quakeColorRanges[3].color },
+    { id: makeId(), label: "Alto",  minMagnitude: legacy.quakeMagMidMax ?? 5, color: legacy.quakePointColorHigh ?? defaultSettings.quakeColorRanges[2].color },
   ];
   return {
     ...defaultSettings,
@@ -195,7 +202,9 @@ export function useSettings() {
  */
 export function getQuakeColor(magnitude: number, ranges: MagnitudeRange[]): string {
   if (!ranges || ranges.length === 0) {
-    return "rgba(255, 255, 255, 0.6)"; // neutral fallback when user hasn't defined any
+    if (magnitude < 3) return DEFAULT_LOW_COLOR;
+    if (magnitude < 5) return DEFAULT_MID_COLOR;
+    return DEFAULT_HIGH_COLOR;
   }
   // Walk ranges in order; first range whose minMagnitude <= mag wins.
   // (The last range acts as the open-ended top tier.)

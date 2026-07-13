@@ -60,6 +60,33 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) / toRad;
   }
 
+  // Force transparent materials on rings & points so they render with
+  // correct alpha in all browsers — Chromium/ANGLE is particularly picky.
+  const applyTransparency = useCallback(() => {
+    const globe = globeRef.current;
+    if (!globe || !globeReadyRef.current) return;
+    try {
+      const scene = globe.scene();
+      if (!scene) return;
+      scene.traverse((obj: any) => {
+        if (obj.isLine || obj.isLineSegments) return;
+        if (obj.geometry?.type === "SphereGeometry") return;
+        if (!obj.material) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) {
+          if (!mat.isMaterial || mat.isLineBasicMaterial) continue;
+          const alreadyTransparent = mat.transparent && mat.opacity < 0.99;
+          if (!alreadyTransparent) {
+            mat.transparent = true;
+            mat.opacity = 0.75;
+            mat.depthWrite = false;
+            mat.needsUpdate = true;
+          }
+        }
+      });
+    } catch {}
+  }, []);
+
   const handleZoom = useCallback((pov: { lat: number; lng: number; altitude: number }) => {
     lastAltRef.current = pov.altitude;
     cameraRef.current = { lat: pov.lat, lng: pov.lng, altitude: pov.altitude };
@@ -186,12 +213,13 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     try { globe.renderer()?.setPixelRatio?.(Math.min(window.devicePixelRatio, 1.5)); } catch {}
     globe.pointOfView({ lat: 25, lng: 10, altitude: 2.8 }, 0);
     lastAltRef.current = 2.8;
+    globeReadyRef.current = true;
     setTimeout(() => {
       globe.pointOfView({ lat: -35, lng: -70, altitude: 0.8 }, 3000);
       lastAltRef.current = 0.8;
+      applyTransparency();
     }, 400);
-    globeReadyRef.current = true;
-  }, []);
+  }, [applyTransparency]);
 
   const ringsData = useMemo(() => {
     const pool = ringPool.current;
@@ -262,6 +290,13 @@ function GlobeView({ live, archived, archivedAll, focusedQuake, replayingId, aut
     for (const id of pool.keys()) if (!ids.has(id)) pool.delete(id);
     return result;
   }, [stations, showStations, pending.labelAltitude, visibleCenter]);
+
+  // Re-apply transparency whenever geometry data changes
+  useEffect(() => {
+    if (!globeReadyRef.current) return;
+    const timer = setTimeout(applyTransparency, 100);
+    return () => clearTimeout(timer);
+  }, [ringsData, pointsData, applyTransparency]);
 
   const htmlElement = useCallback((d: any) => {
     const el = document.createElement("div");
